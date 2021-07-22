@@ -17,7 +17,9 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 
-import static xyz.kumaraswamy.tasks.Tasks.*;
+import static xyz.kumaraswamy.tasks.Tasks.TAG;
+import static xyz.kumaraswamy.tasks.Tasks.TASK_CALL_FUNCTION;
+import static xyz.kumaraswamy.tasks.Tasks.TASK_CREATE_FUNCTION;
 
 public class ActivityService extends JobService {
 
