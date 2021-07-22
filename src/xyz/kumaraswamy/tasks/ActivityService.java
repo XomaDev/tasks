@@ -76,9 +76,6 @@ public class ActivityService extends JobService {
     }
 
     private void processTasks(YailDictionary pd, String[] tasks) throws Exception {
-        Log.d(TAG, "processTasks: ----------------------------");
-        Log.d(TAG, "processTasks: " + Arrays.toString(tasks));
-        Log.d(TAG, "processTasks: Tasks! " + tasks.length);
         for (String task : tasks) {
             Log.d(TAG, "processTasks: task " + task);
 
