@@ -31,5 +31,5 @@ assets:
   #   - my_awesome_asset.anything
 
 # Dependencies declared here should be present in the "deps" directory.
-# deps:
-#   - my_awesome_library.jar
+deps:
+   - beanshell.jar
