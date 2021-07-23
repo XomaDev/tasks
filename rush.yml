@@ -6,8 +6,8 @@ name: Tasks           # Caution: DO NOT change the name.
 description: Extension component for Tasks. Created using Rush.
 
 version:
-  number: auto        # Auto increments version number when built with '-r' ('--release') flag.
-  name: '1'
+  number: 4        # Auto increments version number when built with '-r' ('--release') flag.
+  name: 'The tasks.'
 
 authors:
   - Kumaraswamy
