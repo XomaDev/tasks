@@ -20,7 +20,6 @@ import com.google.appinventor.components.runtime.util.YailDictionary;
 import com.google.appinventor.components.runtime.util.YailList;
 import org.json.JSONException;
 
-import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -306,14 +305,14 @@ public class ActivityService extends JobService {
         try {
             Object result = MethodHandler.invokeComponent(component, methodName, parms);
             Log.d(TAG, "handleFunction: Invoke result: " + result);
-        } catch (InvocationTargetException | IllegalAccessException e) {
+        } catch (Exception e) {
             e.printStackTrace();
         }
     }
 
     private void putEventName(Object[] taskValues) {
         final String componentId = taskValues[0].toString();
-        final Object[] eventNameFunctionId = new Object[]{taskValues[1], taskValues[2]};
+        final Object[] eventNameFunctionId = new Object[] {taskValues[1], taskValues[2]};
 
         ArrayList<Object> eventsMap = events.getOrDefault(componentId, new ArrayList<>());
         eventsMap.add(eventNameFunctionId);
@@ -334,7 +333,7 @@ public class ActivityService extends JobService {
 // EXTENSION - AI2
 
 class MethodHandler {
-    public static Object invokeComponent(final Component component, final String methodName, Object[] params) throws InvocationTargetException, IllegalAccessException {
+    public static Object invokeComponent(final Component component, final String methodName, Object[] params) throws Exception {
         Method method = findMethod(component.getClass().getMethods(), methodName, params.length);
 
         if (method == null) {
