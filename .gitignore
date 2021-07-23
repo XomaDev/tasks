@@ -3,3 +3,7 @@
 
 # Output directory
 out
+
+# IDE direcotry
+
+.idea
