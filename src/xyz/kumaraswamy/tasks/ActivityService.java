@@ -30,7 +30,7 @@ public class ActivityService extends JobService {
     private ComponentManager manager;
     private TinyDB tinyDB;
 
-    private HashMap<String, Object[]> functions = new HashMap<>();
+    private final HashMap<String, Object[]> functions = new HashMap<>();
 
     @Override
     public boolean onStartJob(JobParameters parms) {
@@ -181,9 +181,7 @@ class MethodHandler {
     private static Method findMethod(Method[] methods, String name, int parameterCount) {
         name = name.replaceAll("[^a-zA-Z0-9]", "");
         for (Method method : methods) {
-            if (method.getName().equals(name)
-                    && method.getParameterTypes().length == parameterCount)
-                return method;
+            if (method.getName().equals(name) && method.getParameterTypes().length == parameterCount) return method;
         }
         return null;
     }
