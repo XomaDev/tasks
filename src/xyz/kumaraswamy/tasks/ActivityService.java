@@ -6,6 +6,8 @@ import android.app.NotificationManager;
 import android.app.job.JobParameters;
 import android.app.job.JobService;
 import android.content.Context;
+import android.content.Intent;
+import android.net.Uri;
 import android.os.Build;
 import android.os.PersistableBundle;
 import android.util.Log;
@@ -25,9 +27,11 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 
+import static android.app.job.JobInfo.NETWORK_TYPE_NONE;
+import static xyz.kumaraswamy.tasks.ActivityService.MethodHandler.invokeComponent;
+import static xyz.kumaraswamy.tasks.Tasks.EXTRA_NETWORK;
 import static xyz.kumaraswamy.tasks.Tasks.FOREGROUND_CONFIG;
 import static xyz.kumaraswamy.tasks.Tasks.FOREGROUND_MODE;
-import static xyz.kumaraswamy.tasks.Tasks.TAG;
 import static xyz.kumaraswamy.tasks.Tasks.TASK_CALL_FUNCTION;
 import static xyz.kumaraswamy.tasks.Tasks.TASK_CREATE_FUNCTION;
 import static xyz.kumaraswamy.tasks.Tasks.TASK_EXTRA_FUNCTION;
@@ -39,6 +43,11 @@ public class ActivityService extends JobService {
     public static final String JOB = "job";
 
     private boolean stopped = false;
+    private boolean foreground = false;
+
+    private String[] foregroundData;
+
+    private JobParameters jobParms;
 
     private int JOB_ID;
     private ComponentManager manager;
@@ -46,6 +55,8 @@ public class ActivityService extends JobService {
     private final HashMap<String, Object[]> functions = new HashMap<>();
     private final HashMap<String, ArrayList<Object>> events = new HashMap<>();
     private final HashMap<String, Object[]> extraFunctions = new HashMap<>();
+
+    static final HashMap<String, Object> variables = new HashMap<>();
 
     @Override
     public boolean onStartJob(JobParameters parms) {
@@ -55,6 +66,7 @@ public class ActivityService extends JobService {
     }
 
     private void doBackgroundWork(final JobParameters parms) {
+        jobParms = parms;
         processFunctions(parms.getExtras());
     }
 
@@ -85,11 +97,12 @@ public class ActivityService extends JobService {
         Object components = getValue(JOB, new HashMap<String, String>());
         manager = new ComponentManager(this, (HashMap<String, String>) components, componentsCreated, eventRaisedListener);
 
-        boolean foreground = extras.getBoolean(FOREGROUND_MODE);
+        foreground = extras.getBoolean(FOREGROUND_MODE);
         Log.d(TAG, "processFunctions: Foreground " + foreground);
 
         if (foreground) {
-            initialiseForeground(extras.getStringArray(FOREGROUND_CONFIG));
+            foregroundData = extras.getStringArray(FOREGROUND_CONFIG);
+            initialiseForeground(foregroundData);
         }
     }
 
@@ -101,14 +114,14 @@ public class ActivityService extends JobService {
             NotificationChannel channel = new NotificationChannel(CHANNEL_ID, "Task", NotificationManager.IMPORTANCE_DEFAULT);
 
             ((NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE)).createNotificationChannel(channel);
-
             final String icon = values[3];
 
             final int iconInt = (icon.isEmpty() || icon.equalsIgnoreCase("DEFAULT"))
                     ? android.R.drawable.ic_menu_info_details
                     : Integer.parseInt(icon.replaceAll(" ", ""));
 
-            final Notification notification = new Notification.Builder(this, "BackgroundService").
+            Notification notification = new
+                    Notification.Builder(this, "BackgroundService").
                     setSubText(values[0]).
                     setContentTitle(values[1]).
                     setContentText(values[2]).
@@ -136,7 +149,7 @@ public class ActivityService extends JobService {
             if (taskType == TASK_CREATE_FUNCTION) {
                 function(taskValues);
             } else if (taskType == TASK_CALL_FUNCTION) {
-                handleFunction(taskValues);
+                handleFunction(taskValues, null);
             } else if (taskType == TASK_REGISTER_EVENT) {
                 putEventName(taskValues);
             } else if (taskType == TASK_EXTRA_FUNCTION) {
@@ -172,8 +185,8 @@ public class ActivityService extends JobService {
 
                     final ArrayList<Object[]> results = new ArrayList<>();
 
-                    for (Object o : values) {
-                        Object result = parseExtraFunctionCode(o.toString(), parms);
+                    for (Object obj : values) {
+                        Object result = parseExtraFunctionCode(obj.toString(), parms);
 
                         if (!(result instanceof Boolean)) {
                             Log.i(TAG, "handleEvent: The parsed result is: " + Arrays.toString(((Object[]) result)));
@@ -186,7 +199,7 @@ public class ActivityService extends JobService {
                         handleExtraFunction(objects);
                     }
                 } else {
-                    handleFunction(new Object[]{functionId});
+                    handleFunction(new Object[] {functionId}, null);
                 }
             } else {
                 Log.d(TAG, "handleEvent: Event dismissed of name " + eventName);
@@ -197,9 +210,10 @@ public class ActivityService extends JobService {
     private void handleExtraFunction(Object[] objs) {
         String functionName = objs[0].toString();
         final String input = objs[1].toString();
+        Object[] parms = (Object[]) objs[2];
 
         if (functionName.equals("function")) {
-            handleFunction(new Object[]{input});
+            handleFunction(new Object[] {input}, parms);
             return;
         }
         Log.e(TAG, "Invalid extra function type name received!");
@@ -266,7 +280,9 @@ public class ActivityService extends JobService {
     }
 
     private void function(Object[] taskValues) throws Exception {
-        final Object[] values = new Object[]{taskValues[0], taskValues[1], taskValues[2]};
+        final Object[] values = new Object[] {
+                taskValues[0], taskValues[1], taskValues[2]
+        };
         final String functionName = taskValues[3].toString();
 
         if (!functions.containsKey(functionName)) {
@@ -281,8 +297,12 @@ public class ActivityService extends JobService {
         throw new Exception("The functions already contain the key \"" + functionName + "\".");
     }
 
-    private void handleFunction(Object[] values) {
+    private void handleFunction(Object[] values, Object[] eventParms) {
         final Object[] taskValues = functions.get(values[0].toString());
+
+        if (eventParms == null) {
+            eventParms = new Object[] {};
+        }
 
         if (taskValues == null || taskValues.length == 0) {
             Log.e(TAG, "Invalid invoke values provided");
@@ -292,6 +312,41 @@ public class ActivityService extends JobService {
         final String key = taskValues[0].toString();
         final String methodName = taskValues[1].toString();
         final Object[] parms = ((YailList) taskValues[2]).toArray();
+
+        if (key.equals("self")) {
+            final boolean removeNotificationOrRestart = getExitBoolean(parms);
+
+            if (methodName.equals("exit")) {
+                jobFinished(jobParms, removeNotificationOrRestart);
+                return;
+            } else if (methodName.equals("stop-foreground")) {
+                stopForeground(removeNotificationOrRestart);
+                return;
+            } else if (methodName.equals("destroy") && parms.length == 1) {
+                destroyComponent(parms[0].toString());
+                return;
+            } else if (methodName.equals("start-app") && parms.length == 2) {
+                String action = parms[0].toString();
+                boolean appActivity = Boolean.parseBoolean(parms[1].toString());
+
+                try {
+                    Intent intent;
+                    if (appActivity) {
+                        boolean selfActivity = !action.contains(".");
+                        intent = selfActivity
+                                ? new Intent(this, Class.forName(getPackageName() + "." + action))
+                                : getPackageManager().getLaunchIntentForPackage(action);
+                    } else {
+                        intent = new Intent("android.intent.action.VIEW", Uri.parse(action));
+                    }
+                    intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    startActivity(intent);
+                } catch (ClassNotFoundException e) {
+                    e.printStackTrace();
+                }
+                return;
+            }
+        }
 
         Log.d(TAG, "handleFunction: parms for the function " + Arrays.toString(parms));
 
@@ -303,11 +358,32 @@ public class ActivityService extends JobService {
         }
 
         try {
-            Object result = MethodHandler.invokeComponent(component, methodName, parms);
-            Log.d(TAG, "handleFunction: Invoke result: " + result);
+            Object invoke = invokeComponent(component, methodName, parms, eventParms);
+            Log.d(TAG, "handleFunction: Invoke result: " + invoke);
+            variables.put("invoke", invoke);
         } catch (Exception e) {
             e.printStackTrace();
         }
+    }
+
+    private void destroyComponent(String key) {
+        Component component = manager.removeComponent(key);
+        String[] methodNames = new String[] {
+                "onDestroy", "onPause"
+        };
+        try {
+            for (String method : methodNames) {
+                invokeComponent(component, method, new Object[] {}, new Object[] {});
+            }
+        } catch (Exception e) {
+            // JUST LOG THE EXCEPTION
+            Log.e(TAG, "destroyComponent: " + e.getMessage());
+        }
+    }
+
+    private boolean getExitBoolean(final Object[] array) {
+        return (array.length <= 0
+                || Boolean.parseBoolean(array[0].toString()));
     }
 
     private void putEventName(Object[] taskValues) {
@@ -318,61 +394,79 @@ public class ActivityService extends JobService {
         eventsMap.add(eventNameFunctionId);
 
         events.put(componentId, eventsMap);
-        Log.d(TAG, "putEventName: Registered event name and function Id" + Arrays.toString(eventNameFunctionId));
+        Log.d(TAG, "putEventName: Registered event name and function Id " + Arrays.toString(eventNameFunctionId));
     }
 
     @Override
     public boolean onStopJob(JobParameters parms) {
         Log.d(TAG, "onStopJob: Job cancelled");
+
+        Intent intent = new Intent(this, Tasks.AlarmReceiver.class);
+        intent.putExtra(JOB, JOB_ID);
+        intent.putExtra(EXTRA_NETWORK, (int) getValue(EXTRA_NETWORK, NETWORK_TYPE_NONE));
+        intent.putExtra(FOREGROUND_MODE, foreground);
+        intent.putExtra(FOREGROUND_CONFIG, foregroundData);
+
+        sendBroadcast(intent);
+
         stopped = true;
         return false;
     }
-}
 
-// PARTS OF CODE FROM DYNAMIC_COMPONENTS
-// EXTENSION - AI2
+    // PARTS OF CODE FROM DYNAMIC_COMPONENTS
+    // EXTENSION - AI2
 
-class MethodHandler {
-    public static Object invokeComponent(final Component component, final String methodName, Object[] params) throws Exception {
-        Method method = findMethod(component.getClass().getMethods(), methodName, params.length);
+    static class MethodHandler {
+        public static Object invokeComponent(final Component component, final String methodName, Object[] params, Object[] eventParms) throws Exception {
+            Method method = findMethod(component.getClass().getMethods(), methodName, params.length);
 
-        if (method == null) {
-            Log.e(TAG, "invokeComponent: Method not found for name \"" + methodName + "\"!");
+            if (method == null) {
+                Log.e(TAG, "invokeComponent: Method not found for name \"" + methodName + "\"!");
+                return null;
+            }
+
+            final Class<?>[] mRequestedMethodParameters = method.getParameterTypes();
+            final ArrayList<Object> mParametersArrayList = new ArrayList<>();
+
+            for (int i = 0; i < mRequestedMethodParameters.length; i++) {
+                if ("int".equals(mRequestedMethodParameters[i].getName())) {
+                    mParametersArrayList.add(Integer.parseInt(params[i].toString()));
+                } else if ("float".equals(mRequestedMethodParameters[i].getName())) {
+                    mParametersArrayList.add(Float.parseFloat(params[i].toString()));
+                } else if ("double".equals(mRequestedMethodParameters[i].getName())) {
+                    mParametersArrayList.add(Double.parseDouble(params[i].toString()));
+                } else if ("java.lang.String".equals(mRequestedMethodParameters[i].getName())) {
+                    String parm = params[i].toString();
+
+                    for (String key : variables.keySet()) {
+                        parm = parm.replace("{" + key + "}", variables.get(key).toString());
+                    }
+                    for (int j = 0; j < eventParms.length; j++) {
+                        parm = parm.replace("{" + j + "}", eventParms[j].toString());
+                    }
+
+                    mParametersArrayList.add(parm);
+                } else if ("boolean".equals(mRequestedMethodParameters[i].getName())) {
+                    mParametersArrayList.add(Boolean.parseBoolean(params[i].toString()));
+                } else {
+                    mParametersArrayList.add(params[i]);
+                }
+            }
+            return emptyIfNull(method.invoke(component, mParametersArrayList.toArray()));
+        }
+
+        private static Method findMethod(Method[] methods, String name, int parameterCount) {
+            name = name.replaceAll("[^a-zA-Z0-9]", "");
+            for (Method method : methods) {
+                if (method.getName().equals(name)
+                        && method.getParameterTypes().length == parameterCount)
+                    return method;
+            }
             return null;
         }
 
-        final Class<?>[] mRequestedMethodParameters = method.getParameterTypes();
-        final ArrayList<Object> mParametersArrayList = new ArrayList<>();
-
-        for (int i = 0; i < mRequestedMethodParameters.length; i++) {
-            if ("int".equals(mRequestedMethodParameters[i].getName())) {
-                mParametersArrayList.add(Integer.parseInt(params[i].toString()));
-            } else if ("float".equals(mRequestedMethodParameters[i].getName())) {
-                mParametersArrayList.add(Float.parseFloat(params[i].toString()));
-            } else if ("double".equals(mRequestedMethodParameters[i].getName())) {
-                mParametersArrayList.add(Double.parseDouble(params[i].toString()));
-            } else if ("java.lang.String".equals(mRequestedMethodParameters[i].getName())) {
-                mParametersArrayList.add(params[i].toString());
-            } else if ("boolean".equals(mRequestedMethodParameters[i].getName())) {
-                mParametersArrayList.add(Boolean.parseBoolean(params[i].toString()));
-            } else {
-                mParametersArrayList.add(params[i]);
-            }
+        public static Object emptyIfNull(Object o) {
+            return (o == null) ? "" : o;
         }
-        return emptyIfNull(method.invoke(component, mParametersArrayList.toArray()));
-    }
-
-    private static Method findMethod(Method[] methods, String name, int parameterCount) {
-        name = name.replaceAll("[^a-zA-Z0-9]", "");
-        for (Method method : methods) {
-            if (method.getName().equals(name)
-                    && method.getParameterTypes().length == parameterCount)
-                return method;
-        }
-        return null;
-    }
-
-    public static Object emptyIfNull(Object o) {
-        return (o == null) ? "" : o;
     }
 }

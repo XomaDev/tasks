@@ -54,7 +54,7 @@ public class Tasks extends AndroidNonvisibleComponent {
     public static final String FOREGROUND_MODE = "foreground_mode";
     public static final String FOREGROUND_CONFIG = "foreground_config";
 
-    private static final String EXTRA_NETWORK = "extra_network";
+    static final String EXTRA_NETWORK = "extra_network";
 
     private boolean exact = false;
     private String[] foreground = new String[] {
@@ -113,6 +113,8 @@ public class Tasks extends AndroidNonvisibleComponent {
         } else if (requiredNetwork.equals("NOT_ROAMING")) {
             network = JobInfo.NETWORK_TYPE_NOT_ROAMING;
         }
+
+        tinyDB.StoreValue(EXTRA_NETWORK, network);
 
         if (exact) {
             Log.d(TAG, "Start: Request for exact start!");
