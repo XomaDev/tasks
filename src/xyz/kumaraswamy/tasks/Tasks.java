@@ -22,6 +22,7 @@ import com.google.appinventor.components.runtime.util.YailList;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 
 import static android.content.Context.ALARM_SERVICE;
 import static android.content.Context.JOB_SCHEDULER_SERVICE;
@@ -67,8 +68,12 @@ public class Tasks extends AndroidNonvisibleComponent {
         tinyDB = new TinyDB(container);
         activity = container.$context();
 
-        jobScheduler = (JobScheduler) activity.getSystemService(JOB_SCHEDULER_SERVICE);
+        jobScheduler = getJobScheduler(activity);
         alarmManager = (AlarmManager) activity.getSystemService(ALARM_SERVICE);
+    }
+
+    public static JobScheduler getJobScheduler(Context context) {
+        return (JobScheduler) context.getSystemService(JOB_SCHEDULER_SERVICE);
     }
 
     public static class AlarmReceiver extends BroadcastReceiver {
@@ -192,6 +197,25 @@ public class Tasks extends AndroidNonvisibleComponent {
         foreground = new String[] {
                 title, content, subtitle, icon
         };
+    }
+
+    @SimpleFunction(description = "Check if a service is running through the service Id.")
+    public boolean IsRunning(int id) {
+        return isIdRunning(id, activity);
+    }
+
+    public static boolean isIdRunning(int id, Context context) {
+        return pendingIds(context).contains(id);
+    }
+
+    private static ArrayList<Integer> pendingIds(Context context) {
+        List<JobInfo> infos = getJobScheduler(context).getAllPendingJobs();
+        ArrayList<Integer> ids = new ArrayList<>();
+
+        for (JobInfo info : infos) {
+            ids.add(info.getId());
+        }
+        return ids;
     }
 
     private void put(int task, Object... objects) {

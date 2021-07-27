@@ -17,6 +17,7 @@ import com.google.appinventor.components.runtime.errors.YailRuntimeError;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.util.HashMap;
+import java.util.Set;
 
 public class ComponentManager {
 
@@ -35,8 +36,8 @@ public class ComponentManager {
     private final HashMap<String, Component> componentsBuilt = new HashMap<>();
     private final HashMap<Component, String> componentsString = new HashMap<>();
 
-    private final AActivity activity;
-    private final FForm form;
+    private AActivity activity;
+    private FForm form;
 
     public static String getSourceString(final Object component) {
         if (component instanceof Component) {
@@ -148,6 +149,10 @@ public class ComponentManager {
 
     public String getKeyOfComponent(Component component) {
         return componentsString.getOrDefault(component, null);
+    }
+
+    public Set<String> usedComponents() {
+        return componentsBuilt.keySet();
     }
 
     private void createFromSource(final String source, final String key, final boolean isLastKey) {

@@ -10,6 +10,7 @@ import android.content.Intent;
 import android.net.Uri;
 import android.os.Build;
 import android.os.PersistableBundle;
+import android.os.PowerManager;
 import android.util.Log;
 
 import bsh.EvalError;
@@ -73,6 +74,10 @@ public class ActivityService extends JobService {
     private void processFunctions(final PersistableBundle extras) {
         JOB_ID = extras.getInt(JOB);
 
+        PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
+        PowerManager.WakeLock wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, TAG + "WakeLock");
+        wakeLock.acquire();
+
         ComponentManager.ComponentsBuiltListener componentsCreated = () -> {
             Log.d(TAG, "componentsBuilt: Components build!");
             YailDictionary pendingTasks = (YailDictionary) getValue(Tasks.PENDING_TASKS, "");
@@ -102,19 +107,19 @@ public class ActivityService extends JobService {
 
         if (foreground) {
             foregroundData = extras.getStringArray(FOREGROUND_CONFIG);
-            initialiseForeground(foregroundData);
+            initialiseForeground();
         }
     }
 
-    private void initialiseForeground(String[] values) {
-        Log.i(TAG, "initialiseForeground: " + values[2]);
+    private void initialiseForeground() {
+        Log.i(TAG, "initialiseForeground: " + foregroundData[2]);
 
         if (Build.VERSION.SDK_INT >= 26) {
             String CHANNEL_ID = "BackgroundService";
             NotificationChannel channel = new NotificationChannel(CHANNEL_ID, "Task", NotificationManager.IMPORTANCE_DEFAULT);
 
             ((NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE)).createNotificationChannel(channel);
-            final String icon = values[3];
+            final String icon = foregroundData[3];
 
             final int iconInt = (icon.isEmpty() || icon.equalsIgnoreCase("DEFAULT"))
                     ? android.R.drawable.ic_menu_info_details
@@ -122,9 +127,9 @@ public class ActivityService extends JobService {
 
             Notification notification = new
                     Notification.Builder(this, "BackgroundService").
-                    setSubText(values[0]).
-                    setContentTitle(values[1]).
-                    setContentText(values[2]).
+                    setSubText(foregroundData[0]).
+                    setContentTitle(foregroundData[1]).
+                    setContentText(foregroundData[2]).
                     setSmallIcon(iconInt).build();
 
             startForeground(1, notification);
@@ -285,6 +290,10 @@ public class ActivityService extends JobService {
         };
         final String functionName = taskValues[3].toString();
 
+        if (functionName.startsWith("$")) {
+            throw new Exception("Function name should not start from a dollar symbol.");
+        }
+
         if (!functions.containsKey(functionName)) {
             functions.put(functionName, values);
             Log.d(TAG, "function: Created function name " + functionName);
@@ -314,13 +323,13 @@ public class ActivityService extends JobService {
         final Object[] parms = ((YailList) taskValues[2]).toArray();
 
         if (key.equals("self")) {
-            final boolean removeNotificationOrRestart = getExitBoolean(parms);
+            final boolean exitBoolean = getExitBoolean(parms);
 
             if (methodName.equals("exit")) {
-                jobFinished(jobParms, removeNotificationOrRestart);
+                jobFinished(jobParms, exitBoolean); // BOOL: RESTART
                 return;
             } else if (methodName.equals("stop-foreground")) {
-                stopForeground(removeNotificationOrRestart);
+                stopForeground(exitBoolean); // BOOL: REMOVE NOTIFICATION
                 return;
             } else if (methodName.equals("destroy") && parms.length == 1) {
                 destroyComponent(parms[0].toString());
@@ -400,6 +409,13 @@ public class ActivityService extends JobService {
     @Override
     public boolean onStopJob(JobParameters parms) {
         Log.d(TAG, "onStopJob: Job cancelled");
+        stopped = true;
+
+        for (String key : manager.usedComponents()) {
+            destroyComponent(key);
+        }
+
+        jobFinished(parms, false);
 
         Intent intent = new Intent(this, Tasks.AlarmReceiver.class);
         intent.putExtra(JOB, JOB_ID);
@@ -409,7 +425,6 @@ public class ActivityService extends JobService {
 
         sendBroadcast(intent);
 
-        stopped = true;
         return false;
     }
 
