@@ -36,8 +36,8 @@ public class ComponentManager {
     private final HashMap<String, Component> componentsBuilt = new HashMap<>();
     private final HashMap<Component, String> componentsString = new HashMap<>();
 
-    private AActivity activity;
-    private FForm form;
+    private final AActivity activity;
+    private final FForm form;
 
     public static String getSourceString(final Object component) {
         if (component instanceof Component) {

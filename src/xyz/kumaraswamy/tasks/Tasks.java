@@ -12,11 +12,15 @@ import android.content.Intent;
 import android.os.PersistableBundle;
 import android.util.Log;
 
+import android.view.Window;
+import android.view.WindowManager;
+
 import com.google.appinventor.components.annotations.SimpleFunction;
 import com.google.appinventor.components.annotations.SimpleProperty;
 import com.google.appinventor.components.runtime.AndroidNonvisibleComponent;
 import com.google.appinventor.components.runtime.ComponentContainer;
 import com.google.appinventor.components.runtime.TinyDB;
+import com.google.appinventor.components.runtime.errors.YailRuntimeError;
 import com.google.appinventor.components.runtime.util.YailDictionary;
 import com.google.appinventor.components.runtime.util.YailList;
 
@@ -56,8 +60,11 @@ public class Tasks extends AndroidNonvisibleComponent {
     public static final String FOREGROUND_CONFIG = "foreground_config";
 
     static final String EXTRA_NETWORK = "extra_network";
+    static final String REPEATED_EXTRA = "repeated_extra";
 
     private boolean exact = false;
+    private boolean repeated = false;
+
     private String[] foreground = new String[] {
             "Tasks", "Foreground service", "Task is running!", ""
     };
@@ -68,12 +75,14 @@ public class Tasks extends AndroidNonvisibleComponent {
         tinyDB = new TinyDB(container);
         activity = container.$context();
 
-        jobScheduler = getJobScheduler(activity);
+        jobScheduler = (JobScheduler) activity.getSystemService(JOB_SCHEDULER_SERVICE);
         alarmManager = (AlarmManager) activity.getSystemService(ALARM_SERVICE);
-    }
 
-    public static JobScheduler getJobScheduler(Context context) {
-        return (JobScheduler) context.getSystemService(JOB_SCHEDULER_SERVICE);
+        Window window = activity.getWindow();
+
+        if (window != null) {
+            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        }
     }
 
     public static class AlarmReceiver extends BroadcastReceiver {
@@ -81,10 +90,9 @@ public class Tasks extends AndroidNonvisibleComponent {
         public void onReceive(Context context, Intent intent) {
             Log.d(TAG, "onReceive: Received intent!");
             JobScheduler jobScheduler = (JobScheduler) context.getSystemService(JOB_SCHEDULER_SERVICE);
-            startWork(intent.getIntExtra(JOB, 0), 0, context,
-                    jobScheduler, intent.getIntExtra(EXTRA_NETWORK, JobInfo.NETWORK_TYPE_NONE),
-                    intent.getBooleanExtra(FOREGROUND_MODE, false),
-                    intent.getStringArrayExtra(FOREGROUND_CONFIG));
+            startWork(intent.getIntExtra(JOB, 0), 0, context, jobScheduler, intent.getIntExtra(EXTRA_NETWORK,
+                    JobInfo.NETWORK_TYPE_NONE), intent.getBooleanExtra(FOREGROUND_MODE, false),
+                    intent.getStringArrayExtra(FOREGROUND_CONFIG), intent.getBooleanExtra(REPEATED_EXTRA, false));
         }
     }
 
@@ -98,14 +106,20 @@ public class Tasks extends AndroidNonvisibleComponent {
         return exact;
     }
 
+    @SimpleProperty(description =
+            "Enable or disable if to start the service in a " +
+            "repeated cycle when the service is closed")
+    public void RepeatedTask(boolean bool) {
+        repeated = bool;
+    }
+
+    @SimpleProperty
+    public boolean RepeatedTask() {
+        return repeated;
+    }
+
     @SimpleFunction(description = "Starts the service.")
     public boolean Start(final int id, long latency, String requiredNetwork, boolean foreground) {
-        tinyDB.Namespace(TAG + id);
-
-        tinyDB.StoreValue(JOB, components);
-        tinyDB.StoreValue(PENDING_TASKS, pendingTasks);
-        tinyDB.StoreValue(TASK_PROCESS_LIST, YailList.makeList(tasksProcessList));
-
         requiredNetwork = requiredNetwork.toUpperCase();
         int network = JobInfo.NETWORK_TYPE_NONE;
 
@@ -119,23 +133,40 @@ public class Tasks extends AndroidNonvisibleComponent {
             network = JobInfo.NETWORK_TYPE_NOT_ROAMING;
         }
 
-        tinyDB.StoreValue(EXTRA_NETWORK, network);
+        if (latency < 0) {
+            throw new YailRuntimeError("Latency should be above or equal to 0.", TAG);
+        }
+
+        storeToDataBase(id, network);
 
         if (exact) {
+            PendingIntent pd = getReceiverIntent(id, network, foreground, repeated);
+
             Log.d(TAG, "Start: Request for exact start!");
-            alarmManager.setAlarmClock(new AlarmManager.AlarmClockInfo(System.currentTimeMillis() + latency,
-                    getReceiverIntent(id, network, foreground)), getReceiverIntent(id, network, foreground));
+            alarmManager.setAlarmClock(new AlarmManager.AlarmClockInfo(
+                    System.currentTimeMillis() + latency, pd), pd);
             return true;
         }
-        return startWork(id, latency, activity, jobScheduler, network, foreground, this.foreground);
+        return startWork(id, latency, activity, jobScheduler, network, foreground, this.foreground, repeated);
+    }
+
+    private void storeToDataBase(int id, int network) {
+        tinyDB.Namespace(TAG + id);
+
+        tinyDB.StoreValue(JOB, components);
+        tinyDB.StoreValue(PENDING_TASKS, pendingTasks);
+        tinyDB.StoreValue(TASK_PROCESS_LIST, YailList.makeList(tasksProcessList));
+        tinyDB.StoreValue(EXTRA_NETWORK, network);
     }
 
     private static boolean startWork(int id, long latency, Context context, JobScheduler jobScheduler, int network,
-                                     boolean foreground, String[] foregroundConfig) {
+                                     boolean foreground, String[] foregroundConfig, boolean repeated) {
         final PersistableBundle bundle = new PersistableBundle();
+
         bundle.putInt(JOB, id);
         bundle.putBoolean(FOREGROUND_MODE, foreground);
         bundle.putStringArray(FOREGROUND_CONFIG, foregroundConfig);
+        bundle.putBoolean(REPEATED_EXTRA, repeated);
 
         ComponentName componentName = new ComponentName(context, ActivityService.class);
         JobInfo.Builder builder = new JobInfo.Builder(id, componentName);
@@ -153,13 +184,16 @@ public class Tasks extends AndroidNonvisibleComponent {
         return success;
     }
 
-    public PendingIntent getReceiverIntent(int id, int network, boolean foreground) {
+    public PendingIntent getReceiverIntent(int id, int network, boolean foreground, boolean repeated) {
         final Intent intent = new Intent(activity, AlarmReceiver.class);
+
         intent.putExtra(JOB, id);
         intent.putExtra(EXTRA_NETWORK, network);
         intent.putExtra(FOREGROUND_MODE, foreground);
         intent.putExtra(FOREGROUND_CONFIG, this.foreground);
+        intent.putExtra(REPEATED_EXTRA, repeated);
         return PendingIntent.getBroadcast(activity, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT);
+
     }
 
     @SimpleFunction(description = "Cancels the task.")
@@ -201,15 +235,17 @@ public class Tasks extends AndroidNonvisibleComponent {
 
     @SimpleFunction(description = "Check if a service is running through the service Id.")
     public boolean IsRunning(int id) {
-        return isIdRunning(id, activity);
+        return pendingIds().contains(id);
     }
 
-    public static boolean isIdRunning(int id, Context context) {
-        return pendingIds(context).contains(id);
+    @SimpleFunction(description = "Returns the list of running/pending services.")
+    public YailList ActiveIDs() {
+        return YailList.makeList(pendingIds());
     }
 
-    private static ArrayList<Integer> pendingIds(Context context) {
-        List<JobInfo> infos = getJobScheduler(context).getAllPendingJobs();
+    private ArrayList<Integer> pendingIds() {
+        List<JobInfo> infos = jobScheduler.getAllPendingJobs();
+
         ArrayList<Integer> ids = new ArrayList<>();
 
         for (JobInfo info : infos) {
