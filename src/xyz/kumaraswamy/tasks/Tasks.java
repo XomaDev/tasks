@@ -26,7 +26,6 @@ import com.google.appinventor.components.runtime.util.YailList;
 
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.List;
 
 import static android.content.Context.ALARM_SERVICE;
 import static android.content.Context.JOB_SCHEDULER_SERVICE;
@@ -90,9 +89,12 @@ public class Tasks extends AndroidNonvisibleComponent {
         public void onReceive(Context context, Intent intent) {
             Log.d(TAG, "onReceive: Received intent!");
             JobScheduler jobScheduler = (JobScheduler) context.getSystemService(JOB_SCHEDULER_SERVICE);
-            startWork(intent.getIntExtra(JOB, 0), 0, context, jobScheduler, intent.getIntExtra(EXTRA_NETWORK,
-                    JobInfo.NETWORK_TYPE_NONE), intent.getBooleanExtra(FOREGROUND_MODE, false),
-                    intent.getStringArrayExtra(FOREGROUND_CONFIG), intent.getBooleanExtra(REPEATED_EXTRA, false));
+            startWork(
+                    intent.getIntExtra(JOB, 0), 0, context, jobScheduler,
+                    intent.getIntExtra(EXTRA_NETWORK, JobInfo.NETWORK_TYPE_NONE),
+                    intent.getBooleanExtra(FOREGROUND_MODE, false),
+                    intent.getStringArrayExtra(FOREGROUND_CONFIG),
+                    intent.getBooleanExtra(REPEATED_EXTRA, false));
         }
     }
 
@@ -185,15 +187,21 @@ public class Tasks extends AndroidNonvisibleComponent {
     }
 
     public PendingIntent getReceiverIntent(int id, int network, boolean foreground, boolean repeated) {
-        final Intent intent = new Intent(activity, AlarmReceiver.class);
+        Intent intent = prepareIntent(activity, id, network, foreground, this.foreground, repeated);
+
+        return PendingIntent.getBroadcast(activity, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT);
+    }
+
+    public static Intent prepareIntent(Context context, int id, int network, boolean foreground, String[] config, boolean repeated) {
+        final Intent intent = new Intent(context, AlarmReceiver.class);
 
         intent.putExtra(JOB, id);
         intent.putExtra(EXTRA_NETWORK, network);
         intent.putExtra(FOREGROUND_MODE, foreground);
-        intent.putExtra(FOREGROUND_CONFIG, this.foreground);
+        intent.putExtra(FOREGROUND_CONFIG, config);
         intent.putExtra(REPEATED_EXTRA, repeated);
-        return PendingIntent.getBroadcast(activity, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT);
 
+        return intent;
     }
 
     @SimpleFunction(description = "Cancels the task.")
@@ -243,14 +251,35 @@ public class Tasks extends AndroidNonvisibleComponent {
         return YailList.makeList(pendingIds());
     }
 
-    private ArrayList<Integer> pendingIds() {
-        List<JobInfo> infos = jobScheduler.getAllPendingJobs();
+    @SimpleFunction(description =
+            "Verifies if the current functions are going to " +
+            "cause any problem when the service is running.")
+    public Object Validate() {
+        if (components.size() == 0 || processTaskId <= 0) {
+            return false;
+        }
 
+        final ArrayList<Integer> processIntTypes = new ArrayList<>();
+        for (String item : tasksProcessList) {
+            processIntTypes.add(Integer.parseInt
+                    (item.substring(item.indexOf("/") + 1)));
+        }
+
+        final boolean isOkay =
+                (processIntTypes.contains(TASK_CALL_FUNCTION)
+                || processIntTypes.contains(TASK_REGISTER_EVENT))
+                && processIntTypes.contains(TASK_CREATE_FUNCTION);
+
+        return isOkay;
+    }
+
+    private ArrayList<Integer> pendingIds() {
         ArrayList<Integer> ids = new ArrayList<>();
 
-        for (JobInfo info : infos) {
+        for (JobInfo info : jobScheduler.getAllPendingJobs()) {
             ids.add(info.getId());
         }
+
         return ids;
     }
 

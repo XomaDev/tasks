@@ -135,10 +135,7 @@ public class ComponentManager {
     }
 
     public Component component(final String key) {
-        if (componentsBuilt.containsKey(key)) {
-            return componentsBuilt.get(key);
-        }
-        return null;
+        return componentsBuilt.get(key);
     }
 
     public Component removeComponent(final String key) {
@@ -148,7 +145,7 @@ public class ComponentManager {
     }
 
     public String getKeyOfComponent(Component component) {
-        return componentsString.getOrDefault(component, null);
+        return componentsString.get(component);
     }
 
     public Set<String> usedComponents() {

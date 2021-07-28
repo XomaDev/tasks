@@ -29,15 +29,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 
 import static android.app.job.JobInfo.NETWORK_TYPE_NONE;
-
-import static xyz.kumaraswamy.tasks.Tasks.EXTRA_NETWORK;
-import static xyz.kumaraswamy.tasks.Tasks.FOREGROUND_CONFIG;
-import static xyz.kumaraswamy.tasks.Tasks.FOREGROUND_MODE;
-import static xyz.kumaraswamy.tasks.Tasks.REPEATED_EXTRA;
-import static xyz.kumaraswamy.tasks.Tasks.TASK_CALL_FUNCTION;
-import static xyz.kumaraswamy.tasks.Tasks.TASK_CREATE_FUNCTION;
-import static xyz.kumaraswamy.tasks.Tasks.TASK_EXTRA_FUNCTION;
-import static xyz.kumaraswamy.tasks.Tasks.TASK_REGISTER_EVENT;
+import static xyz.kumaraswamy.tasks.Tasks.*;
 
 public class ActivityService extends JobService {
 
@@ -88,7 +80,6 @@ public class ActivityService extends JobService {
             String[] taskProcessList = ((ArrayList<?>) getValue(Tasks.TASK_PROCESS_LIST, "")).toArray(new String[0]);
 
             Log.d(TAG, "processFunctions: " + pendingTasks);
-            Log.d(TAG, "processFunctions: " + Arrays.toString(taskProcessList));
             try {
                 processTasks(pendingTasks, taskProcessList);
             } catch (Exception e) {
@@ -131,8 +122,9 @@ public class ActivityService extends JobService {
             ((NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE)).createNotificationChannel(channel);
             final String icon = foregroundData[3];
 
-            final int iconInt = (icon.isEmpty() || icon.equalsIgnoreCase("DEFAULT")) ?
-                    android.R.drawable.ic_menu_info_details : Integer.parseInt(icon.replaceAll(" ", ""));
+            final int iconInt = (icon.isEmpty() || icon.equalsIgnoreCase("DEFAULT"))
+                    ? android.R.drawable.ic_menu_info_details
+                    : Integer.parseInt(icon.replaceAll(" ", ""));
 
             Notification notification = new Notification.Builder(this, "BackgroundService")
                             .setSubText(foregroundData[0])
@@ -207,6 +199,7 @@ public class ActivityService extends JobService {
                             results.add((Object[]) result);
                         }
                     }
+
                     Log.i(TAG, "handleEvent: The values received and prepared: " + results);
 
                     for (Object[] objects : results) {
@@ -369,7 +362,7 @@ public class ActivityService extends JobService {
         final Component component = manager.component(key);
 
         if (component == null) {
-            Log.d(TAG, String.format("handleFunction: The component '%s' does not exists!", key));
+            Log.e(TAG, String.format("handleFunction: The component '%s' does not exists!", key));
             return;
         }
 
@@ -427,12 +420,14 @@ public class ActivityService extends JobService {
         jobFinished(parms, false);
 
         if (repeated) {
-            Intent intent = new Intent(this, Tasks.AlarmReceiver.class);
-            intent.putExtra(JOB, JOB_ID);
-            intent.putExtra(EXTRA_NETWORK, (int) getValue(EXTRA_NETWORK, NETWORK_TYPE_NONE));
-            intent.putExtra(FOREGROUND_MODE, foreground);
-            intent.putExtra(FOREGROUND_CONFIG, foregroundData);
-            intent.putExtra(REPEATED_EXTRA, repeated);
+//            Intent intent = new Intent(this, Tasks.AlarmReceiver.class);
+//            intent.putExtra(JOB, JOB_ID);
+//            intent.putExtra(EXTRA_NETWORK, (int) getValue(EXTRA_NETWORK, NETWORK_TYPE_NONE));
+//            intent.putExtra(FOREGROUND_MODE, foreground);
+//            intent.putExtra(FOREGROUND_CONFIG, foregroundData);
+//            intent.putExtra(REPEATED_EXTRA, repeated);
+            int network = (int) getValue(EXTRA_NETWORK, NETWORK_TYPE_NONE);
+            Intent intent = prepareIntent(this, JOB_ID, network, foreground, foregroundData, repeated);
 
             sendBroadcast(intent);
         }
@@ -444,8 +439,10 @@ public class ActivityService extends JobService {
     // EXTENSION - AI2
 
     static class MethodHandler {
-        public static Object invokeComponent(final Component component, final String methodName, Object[] params,
-                                             Object[] eventParms) throws Exception {
+        public static Object invokeComponent(
+                final Component component, final String methodName,
+                Object[] params, Object[] eventParms) throws Exception {
+
             Method method = findMethod(component.getClass().getMethods(), methodName, params.length);
 
             if (method == null) {
