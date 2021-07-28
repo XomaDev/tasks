@@ -29,7 +29,15 @@ import java.util.Arrays;
 import java.util.HashMap;
 
 import static android.app.job.JobInfo.NETWORK_TYPE_NONE;
-import static xyz.kumaraswamy.tasks.Tasks.*;
+import static xyz.kumaraswamy.tasks.Tasks.EXTRA_NETWORK;
+import static xyz.kumaraswamy.tasks.Tasks.FOREGROUND_CONFIG;
+import static xyz.kumaraswamy.tasks.Tasks.FOREGROUND_MODE;
+import static xyz.kumaraswamy.tasks.Tasks.REPEATED_EXTRA;
+import static xyz.kumaraswamy.tasks.Tasks.TASK_CALL_FUNCTION;
+import static xyz.kumaraswamy.tasks.Tasks.TASK_CREATE_FUNCTION;
+import static xyz.kumaraswamy.tasks.Tasks.TASK_EXTRA_FUNCTION;
+import static xyz.kumaraswamy.tasks.Tasks.TASK_REGISTER_EVENT;
+import static xyz.kumaraswamy.tasks.Tasks.prepareIntent;
 
 public class ActivityService extends JobService {
 
