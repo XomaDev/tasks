@@ -187,9 +187,9 @@ public class Tasks extends AndroidNonvisibleComponent {
     }
 
     public PendingIntent getReceiverIntent(int id, int network, boolean foreground, boolean repeated) {
-        Intent intent = prepareIntent(activity, id, network, foreground, this.foreground, repeated);
+        Intent startIntent = prepareIntent(activity, id, network, foreground, this.foreground, repeated);
 
-        return PendingIntent.getBroadcast(activity, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT);
+        return PendingIntent.getBroadcast(activity, 0, startIntent, PendingIntent.FLAG_UPDATE_CURRENT);
     }
 
     public static Intent prepareIntent(Context context, int id, int network, boolean foreground, String[] config, boolean repeated) {

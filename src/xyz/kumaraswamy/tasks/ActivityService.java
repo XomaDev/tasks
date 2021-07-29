@@ -235,8 +235,12 @@ public class ActivityService extends JobService {
     }
 
     private Object parseExtraFunctionCode(final String code, final Object[] parms) {
-        String executeCode = code.substring(code.lastIndexOf("::") + 3);
-        String condition = code.substring(0, code.lastIndexOf("::"));
+        final String EXTRA_FUNCTION_SEPARATOR = "::";
+
+        final int index = code.lastIndexOf(EXTRA_FUNCTION_SEPARATOR);
+
+        String executeCode = code.substring(index + 3);
+        String condition = code.substring(0, index);
 
         Log.d(TAG, "parseExtraFunctionCode: Execute function code: " + executeCode);
         Log.d(TAG, "parseExtraFunctionCode: Condition function code: " + condition);
@@ -262,8 +266,7 @@ public class ActivityService extends JobService {
                     parms[i] = MethodHandler.emptyIfNull(interpreter.get("val" + i));
                 }
 
-                String[] textsplit = executeCode.split("\\(");
-                String type = textsplit[0];
+                String type = executeCode.substring(0, executeCode.indexOf("("));
 
                 String functionId = executeCode.substring(
                         type.length() + 1, executeCode.length() - 1
@@ -428,12 +431,6 @@ public class ActivityService extends JobService {
         jobFinished(parms, false);
 
         if (repeated) {
-//            Intent intent = new Intent(this, Tasks.AlarmReceiver.class);
-//            intent.putExtra(JOB, JOB_ID);
-//            intent.putExtra(EXTRA_NETWORK, (int) getValue(EXTRA_NETWORK, NETWORK_TYPE_NONE));
-//            intent.putExtra(FOREGROUND_MODE, foreground);
-//            intent.putExtra(FOREGROUND_CONFIG, foregroundData);
-//            intent.putExtra(REPEATED_EXTRA, repeated);
             int network = (int) getValue(EXTRA_NETWORK, NETWORK_TYPE_NONE);
             Intent intent = prepareIntent(this, JOB_ID, network, foreground, foregroundData, repeated);
 
