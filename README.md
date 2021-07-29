@@ -4,15 +4,20 @@
 
 
 
+[<img src="https://raw.githubusercontent.com/XomaDev/tasks-ai2/master/docs/tasks.jpg?token=ARFBK6UKHUK5VULBQYNV4UDBBPJQ6" alt="forthebadge" style="zoom: 67%;" />](https://forthebadge.com) 
+
+
+
 An extension that allows developers to schedule tasks. 
 
-The extension takes a list of jobs that get exnecuted in the background. Along with the executing jobs, the extension has internal features that extend the ability like (auto-start when the device gets rebooted or starting an activity through the URI or Intent).
+The extension takes a list of jobs that get executed in the background. Along with the executing jobs, the extension has internal features that extend the ability like (auto-start when the device gets rebooted or starting an activity through the URI or Intent).
 
 
 
 The extension uses Java reflection that can create classes (*components/extensions*) dynamically.
 
 <hr>
+
 
 
 
