@@ -36,4 +36,4 @@ The extension handles the two types of tasks depending on the mode you set.
 
 
 
-Head over to this [page](https://github.com/XomaDev/tasks-ai2/wiki) to learn more about the extension!
+Head over to this [*page*](https://github.com/XomaDev/tasks-ai2/wiki) to learn more about the extension!
