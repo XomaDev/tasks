@@ -35,10 +35,10 @@ public class Tasks extends AndroidNonvisibleComponent {
 
     static final String TAG = "Tasks";
 
-    private static Activity activity;
+    private Activity activity;
     private final TinyDB tinyDB;
 
-    private static JobScheduler jobScheduler;
+    private JobScheduler jobScheduler;
     private final AlarmManager alarmManager;
 
     private int processTaskId = 0;
@@ -264,13 +264,10 @@ public class Tasks extends AndroidNonvisibleComponent {
             processIntTypes.add(Integer.parseInt
                     (item.substring(item.indexOf("/") + 1)));
         }
-
-        final boolean isOkay =
-                (processIntTypes.contains(TASK_CALL_FUNCTION)
-                || processIntTypes.contains(TASK_REGISTER_EVENT))
-                && processIntTypes.contains(TASK_CREATE_FUNCTION);
-
-        return isOkay;
+        
+        return (processIntTypes.contains(TASK_CALL_FUNCTION)
+        || processIntTypes.contains(TASK_REGISTER_EVENT))
+        && processIntTypes.contains(TASK_CREATE_FUNCTION);
     }
 
     private ArrayList<Integer> pendingIds() {
