@@ -29,15 +29,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 
 import static android.app.job.JobInfo.NETWORK_TYPE_NONE;
-import static xyz.kumaraswamy.tasks.Tasks.EXTRA_NETWORK;
-import static xyz.kumaraswamy.tasks.Tasks.FOREGROUND_CONFIG;
-import static xyz.kumaraswamy.tasks.Tasks.FOREGROUND_MODE;
-import static xyz.kumaraswamy.tasks.Tasks.REPEATED_EXTRA;
-import static xyz.kumaraswamy.tasks.Tasks.TASK_CALL_FUNCTION;
-import static xyz.kumaraswamy.tasks.Tasks.TASK_CREATE_FUNCTION;
-import static xyz.kumaraswamy.tasks.Tasks.TASK_EXTRA_FUNCTION;
-import static xyz.kumaraswamy.tasks.Tasks.TASK_REGISTER_EVENT;
-import static xyz.kumaraswamy.tasks.Tasks.prepareIntent;
+import static xyz.kumaraswamy.tasks.Tasks.*;
 
 public class ActivityService extends JobService {
 
@@ -49,6 +41,7 @@ public class ActivityService extends JobService {
     private boolean stopped = false;
     private boolean foreground = false;
     private boolean repeated = false;
+    private boolean defaultRepeatedMode;
 
     private String[] foregroundData;
 
@@ -108,7 +101,8 @@ public class ActivityService extends JobService {
                 eventRaisedListener);
 
         foreground = extras.getBoolean(FOREGROUND_MODE);
-        repeated = extras.getBoolean(REPEATED_EXTRA);
+        repeated = (boolean) getValue(REPEATED_EXTRA, false);
+        defaultRepeatedMode = (boolean) getValue(REPEATED_TYPE_EXTRA, false);
 
         Log.d(TAG, "processFunctions: Foreground " + foreground);
         Log.d(TAG, "processFunctions: Repeated extra " + repeated);
@@ -353,7 +347,7 @@ public class ActivityService extends JobService {
                             ? !action.contains(".")
                             ? new Intent(this, Class.forName(getPackageName() + "." + action))
                             : getPackageManager().getLaunchIntentForPackage(action)
-                            : new Intent("android.intent.action.VIEW", Uri.parse(action));
+                            : new Intent(Intent.ACTION_VIEW, Uri.parse(action));
 
                     intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                     startActivity(intent);
@@ -428,15 +422,19 @@ public class ActivityService extends JobService {
             destroyComponent(key);
         }
 
-        jobFinished(parms, false);
+//        boolean defaultExit = repeatedMode.equals("DEFAULT");
 
         if (repeated) {
-            int network = (int) getValue(EXTRA_NETWORK, NETWORK_TYPE_NONE);
-            Intent intent = prepareIntent(this, JOB_ID, network, foreground, foregroundData, repeated);
+            jobFinished(parms, defaultRepeatedMode);
+            if (defaultRepeatedMode) {
+                return true;
+            } else {
+                int network = (int) getValue(EXTRA_NETWORK, NETWORK_TYPE_NONE);
+                Intent intent = prepareIntent(this, JOB_ID, network, foreground, foregroundData, repeated);
 
-            sendBroadcast(intent);
+                sendBroadcast(intent);
+            }
         }
-
         return false;
     }
 

@@ -15,8 +15,12 @@ import android.util.Log;
 import android.view.Window;
 import android.view.WindowManager;
 
+import com.google.appinventor.components.annotations.DesignerProperty;
 import com.google.appinventor.components.annotations.SimpleFunction;
 import com.google.appinventor.components.annotations.SimpleProperty;
+
+import com.google.appinventor.components.common.PropertyTypeConstants;
+
 import com.google.appinventor.components.runtime.AndroidNonvisibleComponent;
 import com.google.appinventor.components.runtime.ComponentContainer;
 import com.google.appinventor.components.runtime.TinyDB;
@@ -26,6 +30,7 @@ import com.google.appinventor.components.runtime.util.YailList;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 
 import static android.content.Context.ALARM_SERVICE;
 import static android.content.Context.JOB_SCHEDULER_SERVICE;
@@ -33,20 +38,15 @@ import static xyz.kumaraswamy.tasks.ActivityService.JOB;
 
 public class Tasks extends AndroidNonvisibleComponent {
 
-    static final String TAG = "Tasks";
+    public static final String TAG = "Tasks";
 
-    private static Activity activity;
+    private final Activity activity;
     private final TinyDB tinyDB;
 
-    private static JobScheduler jobScheduler;
+    private JobCreator creator;
+
+    private final JobScheduler jobScheduler;
     private final AlarmManager alarmManager;
-
-    private int processTaskId = 0;
-
-    private final YailDictionary pendingTasks = new YailDictionary();
-    private final ArrayList<String> tasksProcessList = new ArrayList<>();
-
-    private final YailDictionary components = new YailDictionary();
 
     static final int TASK_CREATE_FUNCTION = 0;
     static final int TASK_CALL_FUNCTION = 1;
@@ -60,9 +60,12 @@ public class Tasks extends AndroidNonvisibleComponent {
 
     static final String EXTRA_NETWORK = "extra_network";
     static final String REPEATED_EXTRA = "repeated_extra";
+    static final String REPEATED_TYPE_EXTRA = "repeated_type_extra";
 
     private boolean exact = false;
     private boolean repeated = false;
+
+    private String repeatedMode = "DEFAULT";
 
     private String[] foreground = new String[] {
             "Tasks", "Foreground service", "Task is running!", ""
@@ -82,6 +85,7 @@ public class Tasks extends AndroidNonvisibleComponent {
         if (window != null) {
             window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         }
+        creator = new JobCreator();
     }
 
     public static class AlarmReceiver extends BroadcastReceiver {
@@ -93,11 +97,13 @@ public class Tasks extends AndroidNonvisibleComponent {
                     intent.getIntExtra(JOB, 0), 0, context, jobScheduler,
                     intent.getIntExtra(EXTRA_NETWORK, JobInfo.NETWORK_TYPE_NONE),
                     intent.getBooleanExtra(FOREGROUND_MODE, false),
-                    intent.getStringArrayExtra(FOREGROUND_CONFIG),
-                    intent.getBooleanExtra(REPEATED_EXTRA, false));
+                    intent.getStringArrayExtra(FOREGROUND_CONFIG));
         }
     }
 
+    @DesignerProperty(
+            editorType = PropertyTypeConstants.PROPERTY_TYPE_BOOLEAN,
+            defaultValue = "False")
     @SimpleProperty(description = "If the start the service at the exact time.")
     public void Exact(boolean bool) {
         exact = bool;
@@ -108,16 +114,35 @@ public class Tasks extends AndroidNonvisibleComponent {
         return exact;
     }
 
+    @DesignerProperty(
+            editorType = PropertyTypeConstants.PROPERTY_TYPE_BOOLEAN,
+            defaultValue = "False")
     @SimpleProperty(description =
             "Enable or disable if to start the service in a " +
             "repeated cycle when the service is closed")
-    public void RepeatedTask(boolean bool) {
+    public void Repeated(boolean bool) {
         repeated = bool;
     }
 
     @SimpleProperty
-    public boolean RepeatedTask() {
+    public boolean Repeated() {
         return repeated;
+    }
+
+    @DesignerProperty(
+            editorType = PropertyTypeConstants.PROPERTY_TYPE_CHOICES,
+            editorArgs = {"DEFAULT", "HIGH"},
+            defaultValue = "DEFAULT")
+    @SimpleProperty(description =
+            "Set the repeated task type, possible values " +
+            "are 'DEFAULT' and 'HIGH'")
+    public void RepeatedType(String mode) {
+        repeatedMode = mode;
+    }
+
+    @SimpleProperty
+    public String RepeatedType() {
+        return repeatedMode;
     }
 
     @SimpleFunction(description = "Starts the service.")
@@ -140,35 +165,41 @@ public class Tasks extends AndroidNonvisibleComponent {
         }
 
         storeToDataBase(id, network);
-
         if (exact) {
             PendingIntent pd = getReceiverIntent(id, network, foreground, repeated);
 
             Log.d(TAG, "Start: Request for exact start!");
             alarmManager.setAlarmClock(new AlarmManager.AlarmClockInfo(
                     System.currentTimeMillis() + latency, pd), pd);
+            creator = new JobCreator();
             return true;
         }
-        return startWork(id, latency, activity, jobScheduler, network, foreground, this.foreground, repeated);
+        boolean success =  startWork(id, latency, activity, jobScheduler, network, foreground, this.foreground);
+
+        if (success) {
+            creator = new JobCreator();
+        }
+        return success;
     }
 
     private void storeToDataBase(int id, int network) {
         tinyDB.Namespace(TAG + id);
 
-        tinyDB.StoreValue(JOB, components);
-        tinyDB.StoreValue(PENDING_TASKS, pendingTasks);
-        tinyDB.StoreValue(TASK_PROCESS_LIST, YailList.makeList(tasksProcessList));
+        tinyDB.StoreValue(JOB, creator.getComponents());
+        tinyDB.StoreValue(PENDING_TASKS, creator.getPendingTasks());
+        tinyDB.StoreValue(TASK_PROCESS_LIST, YailList.makeList(creator.getTasksProcessList()));
         tinyDB.StoreValue(EXTRA_NETWORK, network);
+        tinyDB.StoreValue(REPEATED_EXTRA, repeated);
+        tinyDB.StoreValue(REPEATED_TYPE_EXTRA, repeatedMode.equalsIgnoreCase("DEFAULT"));
     }
 
     private static boolean startWork(int id, long latency, Context context, JobScheduler jobScheduler, int network,
-                                     boolean foreground, String[] foregroundConfig, boolean repeated) {
+                                     boolean foreground, String[] foregroundConfig) {
         final PersistableBundle bundle = new PersistableBundle();
 
         bundle.putInt(JOB, id);
         bundle.putBoolean(FOREGROUND_MODE, foreground);
         bundle.putStringArray(FOREGROUND_CONFIG, foregroundConfig);
-        bundle.putBoolean(REPEATED_EXTRA, repeated);
 
         ComponentName componentName = new ComponentName(context, ActivityService.class);
         JobInfo.Builder builder = new JobInfo.Builder(id, componentName);
@@ -211,27 +242,27 @@ public class Tasks extends AndroidNonvisibleComponent {
 
     @SimpleFunction(description = "Create components for the background use.")
     public void CreateComponent(final Object component, final String name) {
-        components.put(name, ComponentManager.getSourceString(component));
+        creator.putComponent(name, component);
     }
 
     @SimpleFunction(description = "Creates the function that will be called in the background.")
     public void CreateFunction(final String id, final String component, final String block, final YailList values) {
-        put(TASK_CREATE_FUNCTION, component, block, values, id);
+        creator.createFunction(id, component, block, values);
     }
 
     @SimpleFunction(description = "Calls the function in the background.")
     public void CallFunction(final String id) {
-        put(TASK_CALL_FUNCTION, id);
+        creator.callFunction(id);
     }
 
     @SimpleFunction(description = "Registers the event for the component.")
     public void RegisterEvent(String component, String eventName, String functionId) {
-        put(TASK_REGISTER_EVENT, component, eventName, functionId);
+        creator.registerEvent(component, eventName, functionId);
     }
 
     @SimpleFunction(description = "Creates an extra function.")
     public void ExtraFunction(final String id, YailList codes) {
-        put(TASK_EXTRA_FUNCTION, id, codes.toArray());
+        creator.putExtraFunction(id, codes);
     }
 
     @SimpleFunction(description = "Configures the foreground.")
@@ -251,28 +282,6 @@ public class Tasks extends AndroidNonvisibleComponent {
         return YailList.makeList(pendingIds());
     }
 
-    @SimpleFunction(description =
-            "Verifies if the current functions are going to " +
-            "cause any problem when the service is running.")
-    public Object Validate() {
-        if (components.size() == 0 || processTaskId <= 0) {
-            return false;
-        }
-
-        final ArrayList<Integer> processIntTypes = new ArrayList<>();
-        for (String item : tasksProcessList) {
-            processIntTypes.add(Integer.parseInt
-                    (item.substring(item.indexOf("/") + 1)));
-        }
-
-        final boolean isOkay =
-                (processIntTypes.contains(TASK_CALL_FUNCTION)
-                || processIntTypes.contains(TASK_REGISTER_EVENT))
-                && processIntTypes.contains(TASK_CREATE_FUNCTION);
-
-        return isOkay;
-    }
-
     private ArrayList<Integer> pendingIds() {
         ArrayList<Integer> ids = new ArrayList<>();
 
@@ -282,10 +291,87 @@ public class Tasks extends AndroidNonvisibleComponent {
 
         return ids;
     }
+}
+
+class JobCreator {
+    private int processTaskId = 0;
+
+    private final YailDictionary pendingTasks = new YailDictionary();
+    private final ArrayList<String> tasksProcessList = new ArrayList<>();
+
+    static final int TASK_CREATE_FUNCTION = 0;
+    static final int TASK_CALL_FUNCTION = 1;
+    static final int TASK_REGISTER_EVENT = 2;
+    static final int TASK_EXTRA_FUNCTION = 3;
+
+    private final YailDictionary components = new YailDictionary();
+    private final ArrayList<String> functions = new ArrayList<>();
+    private final HashMap<String, String> events = new HashMap<>();
+    private final ArrayList<String> extraFunctions = new ArrayList<>();
+
+    public void putComponent(final String name, final Object component) {
+        if (components.containsKey(name)) {
+            throwExists("Component", name);
+        }
+        components.put(name, ComponentManager.getSourceString(component));
+    }
+
+    public void createFunction(final String id, final String component, final String block, final YailList values) {
+        if (functions.contains(id)) {
+            throwExists("Function", id);
+        }
+        functions.add(id);
+        put(TASK_CREATE_FUNCTION, component, block, values, id);
+    }
+
+    public void callFunction(String id) {
+        if (!functions.contains(id)) {
+            simpleThrow("Function '" + id + "' not found");
+        }
+        put(TASK_CALL_FUNCTION, id);
+    }
+
+    public void registerEvent(String component, String eventName, String functionId) {
+        if (events.containsKey(component) && events.get(component).equals(eventName)) {
+            simpleThrow("Event name '" + component + "' already registered for the component.");
+        }
+        events.put(component, eventName);
+        put(TASK_REGISTER_EVENT, component, eventName, functionId);
+    }
+
+    public void putExtraFunction(final String id, YailList codes) {
+        if (extraFunctions.contains(id)) {
+            throwExists("Extra function", id);
+        }
+        extraFunctions.add(id);
+        put(TASK_EXTRA_FUNCTION, id, codes.toArray());
+    }
+
+    public YailDictionary getPendingTasks() {
+        return pendingTasks;
+    }
+
+    public ArrayList<String> getTasksProcessList() {
+        return tasksProcessList;
+    }
+
+    public YailDictionary getComponents() {
+        return components;
+    }
 
     private void put(int task, Object... objects) {
         tasksProcessList.add(processTaskId + "/" + task);
         pendingTasks.put(processTaskId, new ArrayList<>(Arrays.asList(objects)).toArray());
         processTaskId++;
+    }
+
+    private void throwExists(final String type, String name) {
+        String error_exists = " name %s already exists.";
+        simpleThrow((String.format(type + error_exists, name)));
+    }
+
+    private void simpleThrow(final String message) {
+        String tag = "JobCreator";
+        throw new YailRuntimeError(message, tag);
     }
 }
