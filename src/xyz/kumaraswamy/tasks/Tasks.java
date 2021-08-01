@@ -40,12 +40,11 @@ public class Tasks extends AndroidNonvisibleComponent {
 
     public static final String TAG = "Tasks";
 
-    private final Activity activity;
+    private JobCreator creator;
+    private Activity activity;
     private final TinyDB tinyDB;
 
-    private JobCreator creator;
-
-    private final JobScheduler jobScheduler;
+    private JobScheduler jobScheduler;
     private final AlarmManager alarmManager;
 
     static final int TASK_CREATE_FUNCTION = 0;
@@ -299,11 +298,6 @@ class JobCreator {
     private final YailDictionary pendingTasks = new YailDictionary();
     private final ArrayList<String> tasksProcessList = new ArrayList<>();
 
-    static final int TASK_CREATE_FUNCTION = 0;
-    static final int TASK_CALL_FUNCTION = 1;
-    static final int TASK_REGISTER_EVENT = 2;
-    static final int TASK_EXTRA_FUNCTION = 3;
-
     private final YailDictionary components = new YailDictionary();
     private final ArrayList<String> functions = new ArrayList<>();
     private final HashMap<String, String> events = new HashMap<>();
@@ -321,14 +315,14 @@ class JobCreator {
             throwExists("Function", id);
         }
         functions.add(id);
-        put(TASK_CREATE_FUNCTION, component, block, values, id);
+        put(Tasks.TASK_CREATE_FUNCTION, component, block, values, id);
     }
 
     public void callFunction(String id) {
         if (!functions.contains(id)) {
             simpleThrow("Function '" + id + "' not found");
         }
-        put(TASK_CALL_FUNCTION, id);
+        put(Tasks.TASK_CALL_FUNCTION, id);
     }
 
     public void registerEvent(String component, String eventName, String functionId) {
@@ -336,7 +330,7 @@ class JobCreator {
             simpleThrow("Event name '" + component + "' already registered for the component.");
         }
         events.put(component, eventName);
-        put(TASK_REGISTER_EVENT, component, eventName, functionId);
+        put(Tasks.TASK_REGISTER_EVENT, component, eventName, functionId);
     }
 
     public void putExtraFunction(final String id, YailList codes) {
@@ -344,7 +338,7 @@ class JobCreator {
             throwExists("Extra function", id);
         }
         extraFunctions.add(id);
-        put(TASK_EXTRA_FUNCTION, id, codes.toArray());
+        put(Tasks.TASK_EXTRA_FUNCTION, id, codes.toArray());
     }
 
     public YailDictionary getPendingTasks() {
