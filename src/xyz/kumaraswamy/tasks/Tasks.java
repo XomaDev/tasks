@@ -72,7 +72,7 @@ public class Tasks extends AndroidNonvisibleComponent {
     public static final String FOREGROUND_MODE = "foreground_mode";
     public static final String FOREGROUND_CONFIG = "foreground_config";
 
-    static final String EXTRA_NETWORK = "extra_network";
+    public static final String EXTRA_NETWORK = "extra_network";
     static final String REPEATED_EXTRA = "repeated_extra";
     static final String REPEATED_TYPE_EXTRA = "repeated_type_extra";
     static final String TERMINATE_EXTRA = "terminate_extra";
@@ -267,8 +267,8 @@ public class Tasks extends AndroidNonvisibleComponent {
         }
     }
 
-    static boolean startWork(int id, long latency, Context context, JobScheduler jobScheduler, int network,
-                             boolean foreground, String[] foregroundConfig) {
+    public static boolean startWork(int id, long latency, Context context, JobScheduler jobScheduler, int network,
+                                    boolean foreground, String[] foregroundConfig) {
         final PersistableBundle bundle = new PersistableBundle();
 
         bundle.putInt(JOB, id);
