@@ -2,8 +2,10 @@ package xyz.kumaraswamy.tasks;
 
 import android.app.Activity;
 import android.app.Dialog;
+
 import android.content.ComponentName;
 import android.content.Context;
+
 import android.os.Bundle;
 import android.text.TextUtils;
 import android.util.Log;
@@ -118,10 +120,13 @@ public class ComponentManager {
         ComponentManager.eventRaisedListener = eventRaisedListener;
 
         final String[] keySet = components.keySet().toArray(new String[0]);
-        final String lastKey = keySet[keySet.length - 1];
 
-        for (final String key : keySet) {
-            createFromSource(components.get(key), key, key.equals(lastKey));
+        if (keySet.length != 0) {
+            final String lastKey = keySet[keySet.length - 1];
+
+            for (final String key : keySet) {
+                createFromSource(components.get(key), key, key.equals(lastKey));
+            }
         }
     }
 

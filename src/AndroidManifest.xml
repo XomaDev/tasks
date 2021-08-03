@@ -20,11 +20,12 @@
 
         <service android:name="xyz.kumaraswamy.tasks.ActivityService"
                  android:permission="android.permission.BIND_JOB_SERVICE"
-                 android:exported="true"
-                 android:process=":doraemon"/>
+                 android:exported="true"/>
 
         <receiver android:name="xyz.kumaraswamy.tasks.Tasks$AlarmReceiver"
-                  android:enabled="true"
+                  android:exported="true"/>
+
+        <receiver android:name="xyz.kumaraswamy.tasks.alarms.Terminator"
                   android:exported="true"/>
 
         <activity android:name="xyz.kumaraswamy.tasks.ComponentManager$AActivity"/>
