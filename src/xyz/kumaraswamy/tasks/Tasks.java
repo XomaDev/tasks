@@ -1,47 +1,46 @@
 package xyz.kumaraswamy.tasks;
 
-import android.app.Activity;
-import android.app.AlarmManager;
-import android.app.PendingIntent;
-import android.app.job.JobInfo;
-import android.app.job.JobScheduler;
-
-import android.content.BroadcastReceiver;
-import android.content.ComponentName;
-
-import android.content.Context;
-import android.content.Intent;
-import android.os.PersistableBundle;
-
-import android.text.TextUtils;
-
-import android.util.Log;
-import android.view.Window;
-import android.view.WindowManager;
-
 import com.google.appinventor.components.annotations.DesignerProperty;
 import com.google.appinventor.components.annotations.SimpleFunction;
 import com.google.appinventor.components.annotations.SimpleProperty;
-
 import com.google.appinventor.components.common.PropertyTypeConstants;
 import com.google.appinventor.components.runtime.AndroidNonvisibleComponent;
+import com.google.appinventor.components.runtime.Component;
 import com.google.appinventor.components.runtime.ComponentContainer;
 import com.google.appinventor.components.runtime.TinyDB;
 import com.google.appinventor.components.runtime.errors.YailRuntimeError;
 import com.google.appinventor.components.runtime.util.YailDictionary;
 import com.google.appinventor.components.runtime.util.YailList;
-
 import xyz.kumaraswamy.tasks.alarms.Terminator;
 
+import android.app.Activity;
+import android.app.AlarmManager;
+import android.app.PendingIntent;
+import android.app.job.JobInfo;
+import android.app.job.JobScheduler;
+import android.content.BroadcastReceiver;
+import android.content.ComponentName;
+import android.content.Context;
+import android.content.Intent;
+import android.os.PersistableBundle;
+import android.util.Log;
+import android.view.Window;
+import android.view.WindowManager;
+
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 
-import static android.app.job.JobInfo.NETWORK_TYPE_ANY;
 import static android.content.Context.ALARM_SERVICE;
 import static android.content.Context.JOB_SCHEDULER_SERVICE;
-
+import static android.text.TextUtils.isDigitsOnly;
+import static java.lang.Integer.parseInt;
 import static xyz.kumaraswamy.tasks.ActivityService.JOB;
 import static xyz.kumaraswamy.tasks.ComponentManager.getSourceString;
+import static xyz.kumaraswamy.tasks.Util.isNumber;
+import static xyz.kumaraswamy.tasks.Util.isString;
 
 public class Tasks extends AndroidNonvisibleComponent {
 
@@ -173,13 +172,14 @@ public class Tasks extends AndroidNonvisibleComponent {
                     "Else a number value should be a non-negative integer. " +
                     "This feature is not available for exact tasks.")
     public void TimeOut(Object time) {
-        if (time instanceof Number) {
+        if (isNumber(time)) {
             timeout = ((Number) time).intValue();
         } else if (time == "DEFAULT") {
             timeout = -1;
-        } else if (time instanceof String && TextUtils.isDigitsOnly(time.toString())) {
-            timeout = Integer.parseInt(time.toString());
         } else {
+            if (isString(time)) {
+                isDigitsOnly(time.toString());
+            }
             throw new YailRuntimeError("Invalid value provided", TAG);
         }
         Log.d(TAG, "TimeOut: int num time" + timeout);
@@ -194,15 +194,15 @@ public class Tasks extends AndroidNonvisibleComponent {
             "Starts the service. Id is the unique value identifier " +
                     "for your service. Specify a non-negative delay in ms for the latency. " +
                     "requiredNetwork allows you set the condition the service runs, possible " +
-                    "values are 'ANY', 'CELLULAR', 'UN_METERED' and 'NOT_ROAMING'. ")
+                    "values are 'ANY', 'CELLULAR', 'UN_METERED', 'NOT_ROAMING' and 'NONE'.")
     public Object Start(final int id, long latency, String requiredNetwork, boolean foreground) {
 
         requiredNetwork = requiredNetwork.toUpperCase();
-        int network = JobInfo.NETWORK_TYPE_NONE;
+        int network;
 
         switch (requiredNetwork) {
             case "ANY":
-                network = NETWORK_TYPE_ANY;
+                network = JobInfo.NETWORK_TYPE_ANY;
                 break;
             case "CELLULAR":
                 network = JobInfo.NETWORK_TYPE_CELLULAR;
@@ -212,6 +212,12 @@ public class Tasks extends AndroidNonvisibleComponent {
                 break;
             case "NOT_ROAMING":
                 network = JobInfo.NETWORK_TYPE_NOT_ROAMING;
+                break;
+            case "NONE":
+                network = JobInfo.NETWORK_TYPE_NONE;
+                break;
+            default:
+                throw new IllegalStateException("Unexpected value: " + requiredNetwork);
         }
 
         if (latency < 0) {
@@ -251,12 +257,12 @@ public class Tasks extends AndroidNonvisibleComponent {
         Log.d(TAG, "storeToDataBase: " + tasksProcessList);
         Log.d(TAG, "storeToDataBase: " + pendingTasks);
 
-        String[] tags = new String[] {
+        final String[] tags = new String[] {
                 JOB, PENDING_TASKS, TASK_PROCESS_LIST,
                 EXTRA_NETWORK, REPEATED_EXTRA,
                 REPEATED_TYPE_EXTRA, TERMINATE_EXTRA
         };
-        Object[] val = new Object[] {
+        final Object[] val = new Object[] {
                 components, pendingTasks,
                 YailList.makeList(tasksProcessList),
                 network, repeated, repeatedMode.equalsIgnoreCase("DEFAULT"),
@@ -335,7 +341,7 @@ public class Tasks extends AndroidNonvisibleComponent {
 
         final ArrayList<Integer> processIntTypes = new ArrayList<>();
         for (String item : tasksProcessList) {
-            processIntTypes.add(Integer.parseInt
+            processIntTypes.add(parseInt
                     (item.substring(item.indexOf("/") + 1)));
         }
 
@@ -347,6 +353,16 @@ public class Tasks extends AndroidNonvisibleComponent {
     @SimpleFunction(description = "Cancels the task.")
     public void Cancel(int id) {
         jobScheduler.cancel(id);
+    }
+
+    @SimpleFunction(description = "Returns the list of non-visible internal method names")
+    public YailList InternalMethods(final Component component) {
+        Method[] methods = component.getClass().getDeclaredMethods();
+        List<String> names = new ArrayList<>();
+        for (Method method : methods) {
+            names.add(method.getName());
+        }
+        return YailList.makeList(names);
     }
 
     @SimpleFunction(description = "Create components for the background use.")
@@ -386,7 +402,7 @@ public class Tasks extends AndroidNonvisibleComponent {
                     "Special things cannot be stored!.")
     public void CreateVariable(String name, Object value) {
 
-        if (value instanceof Number) {
+        if (isNumber(value)) {
             value = ((Number) value).intValue();
         }
 
@@ -411,7 +427,7 @@ public class Tasks extends AndroidNonvisibleComponent {
     }
 
     private ArrayList<Integer> pendingIds() {
-        ArrayList<Integer> ids = new ArrayList<>();
+        final ArrayList<Integer> ids = new ArrayList<>();
 
         for (JobInfo info : jobScheduler.getAllPendingJobs()) {
             ids.add(info.getId());
@@ -422,7 +438,6 @@ public class Tasks extends AndroidNonvisibleComponent {
 
     private void put(int task, Object... objects) {
         tasksProcessList.add(processTaskId + "/" + task);
-        pendingTasks.put(processTaskId, new ArrayList<>(Arrays.asList(objects)).toArray());
-        processTaskId++;
+        pendingTasks.put(processTaskId++, new ArrayList<>(Arrays.asList(objects)).toArray());
     }
 }
