@@ -311,10 +311,6 @@ public class ActivityService extends JobService {
 
         final int index = code.lastIndexOf(separator);
 
-//        if (index == -1) {
-//            return false;
-//        }
-
         String executeCode = code.substring(index + 3);
         String condition = code.substring(0, index);
 

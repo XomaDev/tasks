@@ -240,13 +240,6 @@ public class Tasks extends AndroidNonvisibleComponent {
             pendingTasks = new YailDictionary();
             tasksProcessList = new ArrayList<>();
             components = new YailDictionary();
-
-//            if (timeout != -1) {
-//                Intent intent = new Intent(activity, Terminator.class);
-//                intent.putExtra(JOB, id);
-//                PendingIntent pd = PendingIntent.getBroadcast(activity, id, intent, PendingIntent.FLAG_UPDATE_CURRENT);
-//                alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, System.currentTimeMillis() + timeout, pd);
-//            }
         }
         return success;
     }
