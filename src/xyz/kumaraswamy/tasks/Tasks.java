@@ -27,7 +27,6 @@ import android.util.Log;
 import android.view.Window;
 import android.view.WindowManager;
 
-import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -242,12 +241,12 @@ public class Tasks extends AndroidNonvisibleComponent {
             tasksProcessList = new ArrayList<>();
             components = new YailDictionary();
 
-            if (timeout != -1) {
-                Intent intent = new Intent(activity, Terminator.class);
-                intent.putExtra(JOB, id);
-                PendingIntent pd = PendingIntent.getBroadcast(activity, id, intent, PendingIntent.FLAG_UPDATE_CURRENT);
-                alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, System.currentTimeMillis() + timeout, pd);
-            }
+//            if (timeout != -1) {
+//                Intent intent = new Intent(activity, Terminator.class);
+//                intent.putExtra(JOB, id);
+//                PendingIntent pd = PendingIntent.getBroadcast(activity, id, intent, PendingIntent.FLAG_UPDATE_CURRENT);
+//                alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, System.currentTimeMillis() + timeout, pd);
+//            }
         }
         return success;
     }
@@ -424,6 +423,18 @@ public class Tasks extends AndroidNonvisibleComponent {
     @SimpleFunction(description = "Returns the list of running/pending services.")
     public YailList ActiveIDs() {
         return YailList.makeList(pendingIds());
+    }
+
+    @SimpleFunction(description = "Creates a simple node")
+    public Object ValueNode(Object value) {
+        // TODO
+        return null;
+    }
+
+    @SimpleFunction(description = "Creates a node with value with right and left data")
+    public Object CreateNode(Object value, Object left, Object right) {
+        // TODO
+        return null;
     }
 
     private ArrayList<Integer> pendingIds() {

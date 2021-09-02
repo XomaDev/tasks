@@ -7,7 +7,11 @@ import android.content.Intent;
 import android.util.Log;
 
 import static xyz.kumaraswamy.tasks.ActivityService.JOB;
-import static xyz.kumaraswamy.tasks.Tasks.*;
+import static xyz.kumaraswamy.tasks.Tasks.EXTRA_NETWORK;
+import static xyz.kumaraswamy.tasks.Tasks.FOREGROUND_CONFIG;
+import static xyz.kumaraswamy.tasks.Tasks.FOREGROUND_MODE;
+import static xyz.kumaraswamy.tasks.Tasks.getScheduler;
+import static xyz.kumaraswamy.tasks.Tasks.startWork;
 
 public class AlarmReceiver extends BroadcastReceiver {
     private static final String TAG = "AlarmReceiver";

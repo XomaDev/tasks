@@ -7,6 +7,7 @@ import android.content.ComponentName;
 import android.content.Context;
 
 import android.os.Bundle;
+import android.os.Handler;
 import android.text.TextUtils;
 import android.util.Log;
 import android.view.Window;
@@ -155,6 +156,10 @@ public class ComponentManager {
 
     public Set<String> usedComponents() {
         return componentsBuilt.keySet();
+    }
+
+    public void postRunnable(Runnable runnable) {
+        new Handler(activity.getMainLooper()).post(runnable);
     }
 
     private void createFromSource(final String source, final String key, final boolean isLastKey) {
