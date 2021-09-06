@@ -11,7 +11,6 @@ import com.google.appinventor.components.runtime.TinyDB;
 import com.google.appinventor.components.runtime.errors.YailRuntimeError;
 import com.google.appinventor.components.runtime.util.YailDictionary;
 import com.google.appinventor.components.runtime.util.YailList;
-import xyz.kumaraswamy.tasks.alarms.Terminator;
 
 import android.app.Activity;
 import android.app.AlarmManager;
@@ -26,6 +25,10 @@ import android.os.PersistableBundle;
 import android.util.Log;
 import android.view.Window;
 import android.view.WindowManager;
+import org.json.JSONException;
+import xyz.kumaraswamy.tasks.node.Node;
+import xyz.kumaraswamy.tasks.node.NodeEncoder;
+import xyz.kumaraswamy.tasks.node.ValueNode;
 
 import java.lang.reflect.Method;
 import java.util.ArrayList;
@@ -35,11 +38,8 @@ import java.util.List;
 import static android.content.Context.ALARM_SERVICE;
 import static android.content.Context.JOB_SCHEDULER_SERVICE;
 import static android.text.TextUtils.isDigitsOnly;
-import static java.lang.Integer.parseInt;
 import static xyz.kumaraswamy.tasks.ActivityService.JOB;
 import static xyz.kumaraswamy.tasks.ComponentManager.getSourceString;
-import static xyz.kumaraswamy.tasks.Util.isNumber;
-import static xyz.kumaraswamy.tasks.Util.isString;
 
 public class Tasks extends AndroidNonvisibleComponent {
 
@@ -57,6 +57,8 @@ public class Tasks extends AndroidNonvisibleComponent {
     static final int TASK_EXTRA_FUNCTION = 3;
     static final int TASK_CREATE_VARIABLE = 4;
     static final int TASK_CALL_FUNCTION_WITH_ARGS = 5;
+    static final int TASK_WORK_WORK_FUNCTION = 6;
+    static final int TASK_CALL_WORK_FUNCTION = 7;
 
     private int processTaskId = 0;
 
@@ -106,7 +108,7 @@ public class Tasks extends AndroidNonvisibleComponent {
         @Override
         public void onReceive(Context context, Intent intent) {
             Log.d(TAG, "onReceive: Received intent!");
-            startWork(
+            initializeWork(
                     intent.getIntExtra(JOB, 0), 0, context, getScheduler(context),
                     intent.getIntExtra(EXTRA_NETWORK, JobInfo.NETWORK_TYPE_NONE),
                     intent.getBooleanExtra(FOREGROUND_MODE, false),
@@ -171,12 +173,12 @@ public class Tasks extends AndroidNonvisibleComponent {
                     "Else a number value should be a non-negative integer. " +
                     "This feature is not available for exact tasks.")
     public void TimeOut(Object time) {
-        if (isNumber(time)) {
+        if (time instanceof Number) {
             timeout = ((Number) time).intValue();
         } else if (time == "DEFAULT") {
             timeout = -1;
         } else {
-            if (isString(time)) {
+            if (time instanceof String) {
                 isDigitsOnly(time.toString());
             }
             throw new YailRuntimeError("Invalid value provided", TAG);
@@ -195,11 +197,10 @@ public class Tasks extends AndroidNonvisibleComponent {
                     "requiredNetwork allows you set the condition the service runs, possible " +
                     "values are 'ANY', 'CELLULAR', 'UN_METERED', 'NOT_ROAMING' and 'NONE'.")
     public Object Start(final int id, long latency, String requiredNetwork, boolean foreground) {
-
-        requiredNetwork = requiredNetwork.toUpperCase();
         int network;
 
-        switch (requiredNetwork) {
+        switch (requiredNetwork =
+                requiredNetwork.toUpperCase().trim()) {
             case "ANY":
                 network = JobInfo.NETWORK_TYPE_ANY;
                 break;
@@ -233,7 +234,7 @@ public class Tasks extends AndroidNonvisibleComponent {
             return true;
         }
 
-        boolean success = startWork(id, latency, activity, jobScheduler, network, foreground, this.foreground);
+        boolean success = initializeWork(id, latency, activity, jobScheduler, network, foreground, this.foreground);
 
         if (success) {
             processTaskId = 0;
@@ -265,8 +266,8 @@ public class Tasks extends AndroidNonvisibleComponent {
         }
     }
 
-    public static boolean startWork(int id, long latency, Context context, JobScheduler jobScheduler, int network,
-                                    boolean foreground, String[] foregroundConfig) {
+    public static boolean initializeWork(int id, long latency, Context context, JobScheduler jobScheduler, int network,
+                                         boolean foreground, String[] foregroundConfig) {
         final PersistableBundle bundle = new PersistableBundle();
 
         bundle.putInt(JOB, id);
@@ -290,9 +291,9 @@ public class Tasks extends AndroidNonvisibleComponent {
     }
 
     public PendingIntent getReceiverIntent(int id, int network, boolean foreground, boolean repeated) {
-        Intent startIntent = prepareIntent(activity, id, network, foreground, this.foreground, repeated);
-
-        return PendingIntent.getBroadcast(activity, 0, startIntent, PendingIntent.FLAG_UPDATE_CURRENT);
+        return PendingIntent.getBroadcast(activity, 0,
+                /* Intent */ prepareIntent(activity, id, network, foreground, this.foreground, repeated),
+                PendingIntent.FLAG_UPDATE_CURRENT);
     }
 
     public static Intent prepareIntent(Context context, int id, int network, boolean foreground, String[] config, boolean repeated) {
@@ -333,7 +334,7 @@ public class Tasks extends AndroidNonvisibleComponent {
 
         final ArrayList<Integer> processIntTypes = new ArrayList<>();
         for (String item : tasksProcessList) {
-            processIntTypes.add(parseInt
+            processIntTypes.add(Integer.parseInt
                     (item.substring(item.indexOf("/") + 1)));
         }
 
@@ -393,12 +394,10 @@ public class Tasks extends AndroidNonvisibleComponent {
             "Creates a variable that will store data. " +
                     "Special things cannot be stored!.")
     public void CreateVariable(String name, Object value) {
-
-        if (isNumber(value)) {
-            value = ((Number) value).intValue();
-        }
-
-        put(TASK_CREATE_VARIABLE, name, value);
+        put(TASK_CREATE_VARIABLE, name,
+                value instanceof Number
+                ? ((Number) value).intValue()
+                : value);
     }
 
     @SimpleFunction(description = "Configures the foreground.")
@@ -418,16 +417,35 @@ public class Tasks extends AndroidNonvisibleComponent {
         return YailList.makeList(pendingIds());
     }
 
-    @SimpleFunction(description = "Creates a simple node")
-    public Object ValueNode(Object value) {
-        // TODO
-        return null;
+//    @SimpleFunction(description = "Creates a simple node")
+//    public Object ValueNode(String value) {
+//        return new ValueNode(value);
+//    }
+
+    @SimpleFunction(description =
+            "Creates a node with value with right and left data")
+    public Object CreateNode(String value, Object left, Object right) {
+        if (!(left instanceof Node))
+            left = new ValueNode(String.valueOf(left));
+        if (!(right instanceof Node)) {
+            right = new ValueNode(String.valueOf(right));
+        }
+        return new Node(value).setLeft(
+                (Node) left).setRight((Node) right);
     }
 
-    @SimpleFunction(description = "Creates a node with value with right and left data")
-    public Object CreateNode(Object value, Object left, Object right) {
-        // TODO
-        return null;
+    @SimpleFunction(description = "Creates a logic function. " +
+            "This can be used to compare and work with things")
+    public void WorkFunction(final String id, final String type, Object node) throws JSONException {
+        if (!(node instanceof Node)) {
+            throw new YailRuntimeError("The second value of the block must be a node.", TAG);
+        }
+        put(TASK_WORK_WORK_FUNCTION, id, type, NodeEncoder.encodeNode((Node) node, true));
+    }
+
+    @SimpleFunction(description = "Calls the work function by its name")
+    public void CallWorkFunction(final String id) {
+        put(TASK_CALL_WORK_FUNCTION, id);
     }
 
     private ArrayList<Integer> pendingIds() {

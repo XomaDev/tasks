@@ -25,6 +25,9 @@ import com.google.appinventor.components.runtime.errors.YailRuntimeError;
 import com.google.appinventor.components.runtime.util.JsonUtil;
 import com.google.appinventor.components.runtime.util.YailDictionary;
 import com.google.appinventor.components.runtime.util.YailList;
+import xyz.kumaraswamy.tasks.node.Node;
+import xyz.kumaraswamy.tasks.node.NodeConstructor;
+import xyz.kumaraswamy.tasks.node.ValueNode;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
@@ -35,21 +38,7 @@ import java.util.HashMap;
 import static android.app.job.JobInfo.NETWORK_TYPE_NONE;
 
 import static java.lang.String.valueOf;
-import static xyz.kumaraswamy.tasks.Tasks.EXTRA_NETWORK;
-import static xyz.kumaraswamy.tasks.Tasks.FOREGROUND_CONFIG;
-import static xyz.kumaraswamy.tasks.Tasks.FOREGROUND_MODE;
-import static xyz.kumaraswamy.tasks.Tasks.REPEATED_EXTRA;
-import static xyz.kumaraswamy.tasks.Tasks.REPEATED_TYPE_EXTRA;
-import static xyz.kumaraswamy.tasks.Tasks.TASK_CALL_FUNCTION;
-import static xyz.kumaraswamy.tasks.Tasks.TASK_CALL_FUNCTION_WITH_ARGS;
-import static xyz.kumaraswamy.tasks.Tasks.TASK_CREATE_FUNCTION;
-import static xyz.kumaraswamy.tasks.Tasks.TASK_CREATE_VARIABLE;
-import static xyz.kumaraswamy.tasks.Tasks.TASK_EXTRA_FUNCTION;
-import static xyz.kumaraswamy.tasks.Tasks.TASK_REGISTER_EVENT;
-import static xyz.kumaraswamy.tasks.Tasks.TERMINATE_EXTRA;
-import static xyz.kumaraswamy.tasks.Tasks.prepareIntent;
-import static xyz.kumaraswamy.tasks.Util.isNumber;
-import static xyz.kumaraswamy.tasks.Util.isString;
+import static xyz.kumaraswamy.tasks.Tasks.*;
 
 public class ActivityService extends JobService {
 
@@ -64,18 +53,22 @@ public class ActivityService extends JobService {
     private boolean repeated = false;
     private boolean defaultRepeatedMode;
 
-    private String[] foreground_initialize_details;
+    private String[] initForegroundDetails;
 
     private JobParameters jobParms;
 
     private int JOB_ID;
-    private static ComponentManager manager;
+    private ComponentManager manager;
 
     private final HashMap<String, Object[]> functions = new HashMap<>();
     private final HashMap<String, ArrayList<Object>> events = new HashMap<>();
     private final HashMap<String, Object[]> extraFunctions = new HashMap<>();
 
+    private final HashMap<String, Object[]> workFunctions = new HashMap<>();
+
     static final HashMap<String, Object> variables = new HashMap<>();
+
+    private MethodHandler methodHandler;
 
     @Override
     public boolean onStartJob(JobParameters parms) {
@@ -95,6 +88,7 @@ public class ActivityService extends JobService {
             initializeTerminator(maxRunInt);
         }
         processFunctions(extras);
+        methodHandler = new MethodHandler();
     }
 
     private void initializeTerminator(int timeout) {
@@ -147,14 +141,16 @@ public class ActivityService extends JobService {
         Log.d(TAG, "processFunctions: Foreground " + foreground);
         Log.d(TAG, "processFunctions: Repeated extra " + repeated);
 
-        if (foreground) {
-            foreground_initialize_details = extras.getStringArray(FOREGROUND_CONFIG);
-            initialiseForeground();
+        if (!foreground) {
+            return;
         }
+
+        initForegroundDetails = extras.getStringArray(FOREGROUND_CONFIG);
+        initialiseForeground();
     }
 
     private void initialiseForeground() {
-        Log.i(TAG, "initialiseForeground: " + foreground_initialize_details[2]);
+        Log.i(TAG, "initialiseForeground: " + initForegroundDetails[2]);
 
         if (Build.VERSION.SDK_INT >= 26) {
             String CHANNEL_ID = "BackgroundService";
@@ -162,16 +158,16 @@ public class ActivityService extends JobService {
                     NotificationManager.IMPORTANCE_DEFAULT);
 
             ((NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE)).createNotificationChannel(channel);
-            final String icon = foreground_initialize_details[3];
+            final String icon = initForegroundDetails[3];
 
             final int iconInt = (icon.isEmpty() || icon.equalsIgnoreCase("DEFAULT")) ?
                     android.R.drawable.ic_menu_info_details : Integer.parseInt(icon.replaceAll(" ", ""));
 
             Notification notification =
                     new Notification.Builder(this, "BackgroundService")
-                            .setSubText(foreground_initialize_details[0])
-                            .setContentTitle(foreground_initialize_details[1])
-                            .setContentText(foreground_initialize_details[2])
+                            .setSubText(initForegroundDetails[0])
+                            .setContentTitle(initForegroundDetails[1])
+                            .setContentText(initForegroundDetails[2])
                             .setSmallIcon(iconInt).build();
 
             startForeground(1, notification);
@@ -205,17 +201,120 @@ public class ActivityService extends JobService {
                 putToVariable(taskValues);
             } else if (taskType == TASK_CALL_FUNCTION_WITH_ARGS) {
                 callWithArgs(taskValues);
+            } else if (taskType == TASK_WORK_WORK_FUNCTION) {
+                workFunction(taskValues);
+            } else if (taskType == TASK_CALL_WORK_FUNCTION) {
+                callWorkFunction(taskValues);
             } else {
                 throw new Exception("Invalid task " + message);
             }
         }
     }
 
+    private void callWorkFunction(Object[] taskValues) throws Exception {
+        final String id = valueOf(taskValues[0]);
+        final Object[] values = workFunctions.get(id);
+
+        if (values == null) {
+            throw new Exception("Cannot find work function id '" + id + '\'');
+        }
+        Log.d(TAG, "callWorkFunction: " + Arrays.toString(values));
+
+        final String type = valueOf(values[0]);
+
+        switch (type) {
+            case "call":
+                handleWorkCall((Node) values[1]);
+                break;
+        }
+    }
+
+    private void handleWorkCall(final Node node) throws Exception {
+        Log.d(TAG, "handleWorkCall");
+        final String workName = node.getValue();
+
+        final String right =
+                processWorkCallNode(node, true)
+                , left = processWorkCallNode(node, false);
+
+        Log.d(TAG, "handleWorkCall: left '" + right +
+                "' right" + "'" + left + "'");
+
+        if (!right.equals(left)) {
+            return;
+        }
+        handleFunction(new Object[] {workName}, null);
+    }
+
+    private String processWorkCallNode(final Node node, boolean rightNode) throws Exception {
+        final Node headNode = !rightNode ?
+                node.getLeft() : node.getRight();
+
+        if (!(headNode instanceof ValueNode)) {
+            return checkNode(headNode);
+        }
+
+        // If head node is instance of ValueNode
+        final String value = headNode.getValue();
+
+        // Return the same if value doesn't start with '$'
+
+        Log.d(TAG, "processWorkCallNode: for value " + value);
+        if (value.startsWith("$")) {
+            final String sub = value.substring(1);
+            final Object variable = variables.get(sub);
+
+            if (variable != null) {
+                return variable.toString();
+            }
+        } else {
+            return value;
+        }
+
+        final Object[] objects = workFunctions.get(value.substring(1));
+
+        if (objects == null) {
+            throw new NullPointerException();
+        }
+
+        if (!valueOf(objects[0]).equals("logic")) {
+            throw new Exception("Unexpected a logic type work function.");
+        }
+
+        return checkNode((Node) objects[1]);
+    }
+
+    private String checkNode(final Node node) throws Exception {
+        final String a1 = valueOf(processWorkCallNode(node, true));
+        final String a2 = processWorkCallNode(node, false);
+        Log.d(TAG, "checkNode: a1 " + a1);
+        Log.d(TAG, "checkNode: a2 " + a2);
+        return valueOf(a1.equals(
+                a2));
+    }
+
+    private void workFunction(Object[] taskValues) throws JSONException {
+        final String type = valueOf(taskValues[1]).toLowerCase();
+
+        switch (type) {
+            case "logic":
+            case "work":
+            case "call":
+                break;
+            default:
+                throw new IllegalStateException("Unexpected value: " + type);
+        }
+        final Node node = NodeConstructor
+                .constructNode((String) taskValues[2]);
+        workFunctions.put(valueOf(taskValues[0]), new Object[] {type, node});
+        Log.d(TAG, "workFunction: Put work function type " + type + ", node " + node);
+    }
+
     private void callWithArgs(Object[] taskValues) {
         String functionName = taskValues[0].toString();
-        Object[] extras = ((YailList) taskValues[1]).toArray();
 
-        handleFunction(new Object[]{functionName}, extras);
+        handleFunction(new Object[] {functionName},
+                /* Extras */ ((YailList) taskValues[1]).toArray());
     }
 
     public void putToVariable(Object[] taskValues) {
@@ -237,10 +336,10 @@ public class ActivityService extends JobService {
             Object[] invokeValues = (Object[]) value;
             Log.d(TAG, "handleEvent: Invoke values " + Arrays.toString(invokeValues));
 
-            final String thisEventName = invokeValues[0].toString();
-            Log.d(TAG, "handleEvent: Comparing event name with " + thisEventName);
+            final String eventName1 = invokeValues[0].toString();
+            Log.d(TAG, "handleEvent: Comparing event name with " + eventName1);
 
-            if (thisEventName.equals(eventName)) {
+            if (eventName1.equals(eventName)) {
                 final String functionId = invokeValues[1].toString();
 
                 if (functionId.startsWith(EXTRA_FUNCTION_PREFIX)) {
@@ -248,9 +347,9 @@ public class ActivityService extends JobService {
                 } else {
                     handleFunction(new Object[]{functionId}, null);
                 }
-            } else {
-                Log.d(TAG, "handleEvent: Event dismissed of name " + eventName);
+                return;
             }
+            Log.d(TAG, "handleEvent: Event dismissed of name " + eventName);
         }
     }
 
@@ -327,8 +426,8 @@ public class ActivityService extends JobService {
             for (int i = 0; i < parms.length; i++) {
                 interpreter.set("val" + i, parms[i]);
             }
-            for (String variableName : variables.keySet()) {
-                interpreter.set(variableName, variables.get(variableName));
+            for (String name : variables.keySet()) {
+                interpreter.set(name, variables.get(name));
             }
             result = interpreter.eval(condition);
         } catch (EvalError evalError) {
@@ -340,10 +439,9 @@ public class ActivityService extends JobService {
         if (!(result instanceof Boolean && (boolean) result)) {
             return false;
         }
-
         try {
             for (int i = 0; i < parms.length; i++) {
-                parms[i] = MethodHandler.emptyIfNull(interpreter.get("val" + i));
+                parms[i] = methodHandler.emptyIfNull(interpreter.get("val" + i));
             }
             for (String name : variables.keySet()) {
                 variables.put(name, interpreter.get(name));
@@ -377,7 +475,7 @@ public class ActivityService extends JobService {
 
     private void extraFunction(Object[] taskValues) throws Exception {
         Log.d(TAG, "extraFunction: Extra function values " + Arrays.toString(taskValues));
-        String id = taskValues[0].toString();
+        String id = valueOf(taskValues[0]);
 
         if (!extraFunctions.containsKey(id)) {
             Log.d(TAG, "extraFunction: Created function name " + id);
@@ -388,7 +486,9 @@ public class ActivityService extends JobService {
     }
 
     private void function(Object[] taskValues) throws Exception {
-        final Object[] values = new Object[]{taskValues[0], taskValues[1], taskValues[2]};
+        final Object[] values = new Object[] {
+                taskValues[0], taskValues[1], taskValues[2]
+        };
         final String functionName = taskValues[3].toString();
 
         if (functionName.startsWith(EXTRA_FUNCTION_PREFIX)) {
@@ -432,15 +532,18 @@ public class ActivityService extends JobService {
                 stopForeground(exitBoolean); // BOOL: REMOVE NOTIFICATION
                 return null;
             } else if (methodName.equals("destroy") && len == 1) {
-                destroyComponent(funcParms[0].toString());
+                destroyComponent(valueOf(funcParms[0]));
                 return null;
             } else if (methodName.equals("start app") && len == 2) {
-                String action = funcParms[0].toString();
+                final String action = valueOf(funcParms[0]);
 
                 try {
-                    Intent intent = Boolean.parseBoolean(funcParms[1].toString()) ? !action.contains(".") ?
-                            new Intent(this, Class.forName(getPackageName() + "." + action)) :
-                            getPackageManager().getLaunchIntentForPackage(action) : new Intent(Intent.ACTION_VIEW,
+                    Intent intent = Boolean.parseBoolean(funcParms[1].toString())
+                            ? !action.contains(".") ?
+                            new Intent(this, Class.forName(
+                                    getPackageName() + "." + action)) :
+                            getPackageManager().getLaunchIntentForPackage(action)
+                            : new Intent(Intent.ACTION_VIEW,
                             Uri.parse(action));
 
                     intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
@@ -450,7 +553,7 @@ public class ActivityService extends JobService {
                 }
                 return null;
             } else if (methodName.equals("start foreground") && len == 4) {
-                foreground_initialize_details = Arrays.asList(funcParms).toArray(new String[0]);
+                initForegroundDetails = Arrays.asList(funcParms).toArray(new String[0]);
                 initialiseForeground();
                 return null;
             }
@@ -466,7 +569,8 @@ public class ActivityService extends JobService {
         }
         Object invoke = null;
         try {
-            invoke = MethodHandler.invokeComponent(component, methodName, funcParms, extras);
+            invoke = methodHandler.invokeComponent(component,
+                    methodName, funcParms, extras);
             Log.d(TAG, "handleFunction: Invoke result: " + invoke);
             variables.put("invoke", invoke);
         } catch (Exception e) {
@@ -477,10 +581,10 @@ public class ActivityService extends JobService {
 
     private void destroyComponent(String key) {
         Component component = manager.removeComponent(key);
-        String[] methodNames = new String[]{"onDestroy", "onPause"};
+        String[] methodNames = new String[] {"onDestroy", "onPause"};
         try {
             for (String method : methodNames) {
-                MethodHandler.invokeComponent(component, method,
+                methodHandler.invokeComponent(component, method,
                         new Object[0], null);
             }
         } catch (Exception exception) {
@@ -492,6 +596,17 @@ public class ActivityService extends JobService {
     private boolean getExitBoolean(final Object[] array) {
         return (array.length <= 0
                 || Boolean.parseBoolean(array[0].toString()));
+    }
+
+    public String replaceEventNames(String string) {
+        for (String key : variables.keySet()) {
+            final String replacement = methodHandler.fix_replacement(variables.get(key));
+
+            if (replacement != null) {
+                string = string.replace("{$" + key + "}", replacement);
+            }
+        }
+        return string;
     }
 
     private void putEventName(Object[] taskValues) {
@@ -524,7 +639,7 @@ public class ActivityService extends JobService {
                 return true;
             }
             sendBroadcast(prepareIntent(this, JOB_ID, (int) getValue(EXTRA_NETWORK,
-                            NETWORK_TYPE_NONE), foreground, foreground_initialize_details, repeated));
+                            NETWORK_TYPE_NONE), foreground, initForegroundDetails, repeated));
         }
         return false;
     }
@@ -532,9 +647,9 @@ public class ActivityService extends JobService {
     // PARTS OF CODE FROM DYNAMIC_COMPONENTS
     // EXTENSION - AI2
 
-    static class MethodHandler {
-        public static Object invokeComponent(final Component component, final String methodName,
-                                             Object[] params, Object[] eventParms) {
+    class MethodHandler {
+        public Object invokeComponent(final Component component, final String methodName,
+                                      Object[] params, Object[] eventParms) {
 
             Method method = findMethod(component.getClass().getMethods(),
                     methodName, params.length);
@@ -548,15 +663,9 @@ public class ActivityService extends JobService {
                 final Object objectParm = params[i];
 
                 if (objectParm instanceof String) {
-                    String string = objectParm.toString();
+                    String string = replaceEventNames(
+                            valueOf(objectParm));
 
-                    for (String key : variables.keySet()) {
-                        final String replacement = fix_replacement(variables.get(key));
-
-                        if (replacement != null) {
-                            string = string.replace("{$" + key + "}", replacement);
-                        }
-                    }
                     if (eventParms == null) {
                         params[i] = string;
                         continue;
@@ -575,7 +684,7 @@ public class ActivityService extends JobService {
 
             final Object[] result = new Object[1];
 
-            manager.postRunnable(() -> {
+            ActivityService.this.manager.postRunnable(() -> {
                 try {
                     result[0] = method.invoke(component,
                             castParms(method.getParameterTypes(), params));
@@ -586,11 +695,11 @@ public class ActivityService extends JobService {
             return valueOf(result[0]);
         }
 
-        private static Object[] castParms(Class<?>[] parmsTypes, Object[] params) {
+        private Object[] castParms(Class<?>[] parmsTypes, Object[] params) {
             Object[] modifiedParms = new Object[parmsTypes.length];
 
             for (int i = 0; i < parmsTypes.length; i++) {
-                final String value = String.valueOf(params[i]);
+                final String value = valueOf(params[i]);
 
                 switch (parmsTypes[i].getName()) {
                     case "int":
@@ -608,6 +717,8 @@ public class ActivityService extends JobService {
                     case "boolean":
                         modifiedParms[i] = Boolean.parseBoolean(value);
                         break;
+                    case "byte":
+                        modifiedParms[i] = Byte.parseByte(value);
                     default:
                         modifiedParms[i] = params[i];
                 }
@@ -615,17 +726,16 @@ public class ActivityService extends JobService {
             return modifiedParms;
         }
 
-        private static String fix_replacement(Object obj) {
-            String replacement = null;
-            if (isString(obj)) {
-                replacement = valueOf(obj);
-            } else if (isNumber(obj)) {
-                replacement = valueOf(((Number) obj).intValue());
-            }
-            return replacement;
+        private String fix_replacement(Object obj) {
+            return obj instanceof String
+                    ? obj.toString()
+                    : obj instanceof Number
+                    ? valueOf(((Number) obj).intValue())
+                    : null;
+
         }
 
-        private static Method findMethod(Method[] methods, String name, int parameterCount) {
+        private Method findMethod(Method[] methods, String name, int parameterCount) {
             name = name.replaceAll("[^a-zA-Z0-9]", "");
             for (Method method : methods) {
                 if (method.getName().equals(name) &&
@@ -635,7 +745,7 @@ public class ActivityService extends JobService {
             return null;
         }
 
-        public static Object emptyIfNull(Object o) {
+        public Object emptyIfNull(Object o) {
             return (o == null) ? "" : o;
         }
     }
