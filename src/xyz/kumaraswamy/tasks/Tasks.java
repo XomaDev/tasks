@@ -417,11 +417,6 @@ public class Tasks extends AndroidNonvisibleComponent {
         return YailList.makeList(pendingIds());
     }
 
-//    @SimpleFunction(description = "Creates a simple node")
-//    public Object ValueNode(String value) {
-//        return new ValueNode(value);
-//    }
-
     @SimpleFunction(description =
             "Creates a node with value with right and left data")
     public Object CreateNode(String value, Object left, Object right) {

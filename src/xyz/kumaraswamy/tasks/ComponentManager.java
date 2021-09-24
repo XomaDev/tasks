@@ -12,6 +12,7 @@ import android.text.TextUtils;
 import android.util.Log;
 import android.view.Window;
 
+import android.view.WindowManager;
 import com.google.appinventor.components.runtime.Component;
 import com.google.appinventor.components.runtime.ComponentContainer;
 import com.google.appinventor.components.runtime.Form;
@@ -89,30 +90,25 @@ public class ComponentManager {
 
             final Window dummyWindow = new Dialog(context).getWindow();
 
-            if (dummyWindow == null) {
-                return;
-            }
-
             windowField.set(activity, dummyWindow);
             windowField.set(form, dummyWindow);
 
             final Field componentField = getFieldName("mComponent", activity);
-
-            if (componentField == null) {
-                return;
-            }
 
             componentField.setAccessible(true);
 
             final String packageName = activity.getPackageName();
             final ComponentName componentName = new ComponentName(packageName, packageName + ".Screen1");
 
-            if (componentName == null) {
-                return;
-            }
-
             componentField.set(activity, componentName);
             componentField.set(form, componentName);
+
+            final Field windowManagerField = getFieldName("mWindowManager", activity);
+            windowManagerField.setAccessible(true);
+
+            final WindowManager windowManager = (WindowManager) context.getSystemService(Context.WINDOW_SERVICE);
+            windowManagerField.set(activity, windowManager);
+            windowManagerField.set(form, windowManager);
         } catch (IllegalAccessException e) {
             Log.e(LOG_TAG, "Unable to set window or component: " + e.getMessage());
         }
