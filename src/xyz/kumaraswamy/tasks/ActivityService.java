@@ -17,6 +17,7 @@ import android.util.Log;
 
 import bsh.EvalError;
 import bsh.Interpreter;
+import org.jetbrains.annotations.NotNull;
 import org.json.JSONException;
 import xyz.kumaraswamy.tasks.alarms.Terminator;
 
@@ -28,7 +29,9 @@ import com.google.appinventor.components.runtime.util.YailList;
 import xyz.kumaraswamy.tasks.node.Node;
 import xyz.kumaraswamy.tasks.node.NodeConstructor;
 import xyz.kumaraswamy.tasks.node.ValueNode;
+import xyz.kumaraswamy.tasks.template.Load;
 
+import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
@@ -70,6 +73,8 @@ public class ActivityService extends JobService {
 
     private MethodHandler methodHandler;
 
+    private final Common common = new Common();
+
     @Override
     public boolean onStartJob(JobParameters parms) {
         Log.d(TAG, "onStartJob: Job started");
@@ -103,6 +108,7 @@ public class ActivityService extends JobService {
                 System.currentTimeMillis() + timeout, pd);
     }
 
+    @SuppressWarnings({"unchecked", "SuspiciousToArrayCall"})
     private void processFunctions(final PersistableBundle extras) {
         PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
         PowerManager.WakeLock wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, TAG + "WakeLock");
@@ -189,26 +195,73 @@ public class ActivityService extends JobService {
             Object[] taskValues = ((YailList) pd.get(taskId + "")).toArray();
             Log.d(TAG, "Task values: " + Arrays.toString(taskValues));
 
-            if (taskType == TASK_CREATE_FUNCTION) {
-                function(taskValues);
-            } else if (taskType == TASK_CALL_FUNCTION) {
-                handleFunction(taskValues, null);
-            } else if (taskType == TASK_REGISTER_EVENT) {
-                putEventName(taskValues);
-            } else if (taskType == TASK_EXTRA_FUNCTION) {
-                extraFunction(taskValues);
-            } else if (taskType == TASK_CREATE_VARIABLE) {
-                putToVariable(taskValues);
-            } else if (taskType == TASK_CALL_FUNCTION_WITH_ARGS) {
-                callWithArgs(taskValues);
-            } else if (taskType == TASK_WORK_WORK_FUNCTION) {
-                workFunction(taskValues);
-            } else if (taskType == TASK_CALL_WORK_FUNCTION) {
-                callWorkFunction(taskValues);
-            } else {
-                throw new Exception("Invalid task " + message);
+//            if (taskType == TASK_CREATE_FUNCTION) {
+//                function(taskValues);
+//            } else if (taskType == TASK_CALL_FUNCTION) {
+//                handleFunction(taskValues, null);
+//            } else if (taskType == TASK_REGISTER_EVENT) {
+//                putEventName(taskValues);
+//            } else if (taskType == TASK_EXTRA_FUNCTION) {
+//                extraFunction(taskValues);
+//            } else if (taskType == TASK_CREATE_VARIABLE) {
+//                putToVariable(taskValues);
+//            } else if (taskType == TASK_CALL_FUNCTION_WITH_ARGS) {
+//                callWithArgs(taskValues);
+//            } else if (taskType == TASK_WORK_WORK_FUNCTION) {
+//                workFunction(taskValues);
+//            } else if (taskType == TASK_CALL_WORK_FUNCTION) {
+//                callWorkFunction(taskValues);
+//            } else if (taskType == TASK_EXECUTE_TEMPLATE) {
+//                executeTemplate(taskValues);
+//            } else {
+//                throw new Exception("Invalid task " + message);
+//            }
+
+            switch (taskType) {
+                case TASK_CREATE_FUNCTION:
+                    function(taskValues);
+                    break;
+                case TASK_CALL_FUNCTION:
+                    handleFunction(taskValues, null);
+                    break;
+                case TASK_REGISTER_EVENT:
+                    putEventName(taskValues);
+                    break;
+                case TASK_EXTRA_FUNCTION:
+                    extraFunction(taskValues);
+                    break;
+                case TASK_CREATE_VARIABLE:
+                    putToVariable(taskValues);
+                    break;
+                case TASK_CALL_FUNCTION_WITH_ARGS:
+                    callWithArgs(taskValues);
+                    break;
+                case TASK_WORK_WORK_FUNCTION:
+                    workFunction(taskValues);
+                    break;
+                case TASK_CALL_WORK_FUNCTION:
+                    callWorkFunction(taskValues);
+                    break;
+                case TASK_EXECUTE_TEMPLATE:
+                    executeTemplate(taskValues);
+                    break;
+                default:
+                    throw new IllegalStateException("Unexpected value: " + taskType);
             }
         }
+    }
+
+    public void createDynamicComponent(String base, String key) {
+        manager.create(base, key);
+    }
+
+    private void executeTemplate(Object[] taskValues) throws IOException, EvalError {
+        final String assetName = (String) taskValues[0];
+        final Object[] parms = ((YailList) taskValues[1]).toArray();
+
+        Log.d(TAG, "executeTemplate: assetName: " + assetName + " " + Arrays.toString(parms));
+
+//        new Load(assetName, this, parms);
     }
 
     private void callWorkFunction(Object[] taskValues) throws Exception {
@@ -361,7 +414,12 @@ public class ActivityService extends JobService {
         final ArrayList<Object[]> results = new ArrayList<>();
 
         for (Object obj : values) {
-            Object result = parseExtraFunctionCode(obj.toString(), parms);
+            Object result = null;
+            try {
+                result = parseExtraFunctionCode(obj.toString(), parms);
+            } catch (EvalError e) {
+                e.printStackTrace();
+            }
 
             if (!(result instanceof Boolean)) {
                 Log.i(TAG, "processExtraFunction: The parsed result is: " +
@@ -405,63 +463,56 @@ public class ActivityService extends JobService {
         }
     }
 
-    private Object parseExtraFunctionCode(final String code, final Object[] parms) {
+    private Object parseExtraFunctionCode(final String code, final Object[] parms) throws EvalError {
         final String separator = "::";
 
         final int index = code.lastIndexOf(separator);
 
-        String executeCode = code.substring(index + 3);
-        String condition = code.substring(0, index);
+        String executeCode = index == -1 ? code : code.substring(index + 3);
+        String condition = index == -1 ? code : code.substring(0, index);
 
         Log.d(TAG, "parseExtraFunctionCode: Execute function code: " + executeCode +
                 "\n" + "Condition function code:" + " " + condition);
 
-        Object result = false;
-
         Interpreter interpreter = new Interpreter();
-
-        try {
-            interpreter.set("me", new Me());
-            interpreter.set("args", parms);
-            for (int i = 0; i < parms.length; i++) {
-                interpreter.set("val" + i, parms[i]);
-            }
-            for (String name : variables.keySet()) {
-                interpreter.set(name, variables.get(name));
-            }
-            result = interpreter.eval(condition);
-        } catch (EvalError evalError) {
-            evalError.printStackTrace();
-        }
+        Object result = eval(parms,
+                condition, interpreter);
 
         Log.d(TAG, "parseExtraFunctionCode: code result " + result);
 
+        for (int i = 0; i < parms.length; i++) {
+            parms[i] = methodHandler.emptyIfNull(interpreter.get("val" + i));
+        }
+        for (String name : variables.keySet()) {
+            variables.put(name, interpreter.get(name));
+        }
+
         if (!(result instanceof Boolean && (boolean) result)) {
+            Log.d(TAG, "parseExtraFunctionCode: result false, returning false");
             return false;
         }
-        try {
-            for (int i = 0; i < parms.length; i++) {
-                parms[i] = methodHandler.emptyIfNull(interpreter.get("val" + i));
-            }
-            for (String name : variables.keySet()) {
-                variables.put(name, interpreter.get(name));
-            }
-            if ((executeCode = executeCode.trim()).equals("pass")) {
-                return false;
-            }
-            String type = executeCode.substring(0,
-                    executeCode.indexOf("("));
-
-            String functionId = executeCode.substring(type.length() + 1,
-                    executeCode.length() - 1);
-
-            return new Object[] {
-                    type, functionId, parms
-            };
-        } catch (Exception e) {
-            e.printStackTrace();
+        if ((executeCode = executeCode.trim()).equals("pass")) {
+            return false;
         }
-        return false;
+        String type = executeCode.substring(0,
+                executeCode.indexOf("("));
+
+        String functionId = executeCode.substring(type.length() + 1,
+                executeCode.length() - 1);
+
+        return new Object[] {
+                type, functionId, parms
+        };
+    }
+
+    public Object eval(Object[] parms, String eval,
+                        Interpreter interpreter) throws EvalError {
+        interpreter.set("me", new ActivityService.Me());
+        common.declareObjects(parms, interpreter);
+        for (String name : variables.keySet()) {
+            interpreter.set(name, variables.get(name));
+        }
+        return interpreter.eval(eval);
     }
 
     private Object getValue(String tag, Object valueIfTagNotThere) {
@@ -504,6 +555,7 @@ public class ActivityService extends JobService {
         throw new Exception(String.format(ERROR_FUNCTION_EXISTS, functionName));
     }
 
+    @SuppressWarnings("SuspiciousToArrayCall")
     private Object handleFunction(Object[] values, Object[] extras) {
         final String functionKey = values[0].toString();
 
@@ -559,19 +611,24 @@ public class ActivityService extends JobService {
             }
         }
 
-        Log.d(TAG, "handleFunction: parms for the function " + Arrays.toString(funcParms));
+        return invoke(extras, key, methodName, funcParms);
+    }
+
+    @NotNull
+    public Object invoke(Object[] extras, String key, String methodName, Object[] funcParms) {
+        Log.d(TAG, "invoke: parms for the function " + Arrays.toString(funcParms));
 
         final Component component = manager.component(key);
 
         if (component == null) {
-            Log.e(TAG, String.format("handleFunction: The component '%s' does not exists!", key));
+            Log.e(TAG, String.format("invoke: The component '%s' does not exists!", key));
             return null;
         }
         Object invoke = null;
         try {
             invoke = methodHandler.invokeComponent(component,
                     methodName, funcParms, extras);
-            Log.d(TAG, "handleFunction: Invoke result: " + invoke);
+            Log.d(TAG, "invoke: Invoke result: " + invoke);
             variables.put("invoke", invoke);
         } catch (Exception e) {
             e.printStackTrace();

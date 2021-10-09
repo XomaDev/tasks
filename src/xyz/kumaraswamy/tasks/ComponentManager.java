@@ -43,6 +43,8 @@ public class ComponentManager {
     private final AActivity activity;
     private final FForm form;
 
+    private static final String TAG = "ComponentManager";
+
     public static String getSourceString(final Object component) {
         if (component instanceof Component) {
             return component.getClass().getName();
@@ -158,6 +160,10 @@ public class ComponentManager {
         new Handler(activity.getMainLooper()).post(runnable);
     }
 
+    public void create(String source, final String key) {
+        createFromSource(getSourceString(source), key, false);
+    }
+
     private void createFromSource(final String source, final String key, final boolean isLastKey) {
         Class<?> baseClass;
         Constructor<?> baseConstructor;
@@ -176,7 +182,7 @@ public class ComponentManager {
 
                 componentsBuilt.put(key, component);
                 componentsString.put(component, key);
-
+                Log.d(TAG, "createFromSource: created component " + component);
                 if (isLastKey) {
                     componentsCreatedListener.componentsCreated();
                 }

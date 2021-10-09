@@ -1,5 +1,6 @@
 package xyz.kumaraswamy.tasks;
 
+import bsh.EvalError;
 import com.google.appinventor.components.annotations.DesignerProperty;
 import com.google.appinventor.components.annotations.SimpleFunction;
 import com.google.appinventor.components.annotations.SimpleProperty;
@@ -29,10 +30,11 @@ import org.json.JSONException;
 import xyz.kumaraswamy.tasks.node.Node;
 import xyz.kumaraswamy.tasks.node.NodeEncoder;
 import xyz.kumaraswamy.tasks.node.ValueNode;
+import xyz.kumaraswamy.tasks.template.Load;
 
+import java.io.IOException;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 
 import static android.content.Context.ALARM_SERVICE;
@@ -59,6 +61,7 @@ public class Tasks extends AndroidNonvisibleComponent {
     static final int TASK_CALL_FUNCTION_WITH_ARGS = 5;
     static final int TASK_WORK_WORK_FUNCTION = 6;
     static final int TASK_CALL_WORK_FUNCTION = 7;
+    static final int TASK_EXECUTE_TEMPLATE = 8;
 
     private int processTaskId = 0;
 
@@ -438,6 +441,12 @@ public class Tasks extends AndroidNonvisibleComponent {
         put(TASK_WORK_WORK_FUNCTION, id, type, NodeEncoder.encodeNode((Node) node, true));
     }
 
+    @SimpleFunction(description = "Loads in the template and executes it.")
+    public void LoadTemplate(final String asset, YailList parms) throws EvalError, IOException {
+        new Load(asset, parms.toArray(),
+                activity, this);
+    }
+
     @SimpleFunction(description = "Calls the work function by its name")
     public void CallWorkFunction(final String id) {
         put(TASK_CALL_WORK_FUNCTION, id);
@@ -455,6 +464,6 @@ public class Tasks extends AndroidNonvisibleComponent {
 
     private void put(int task, Object... objects) {
         tasksProcessList.add(processTaskId + "/" + task);
-        pendingTasks.put(processTaskId++, new ArrayList<>(Arrays.asList(objects)).toArray());
+        pendingTasks.put(processTaskId++, objects);
     }
 }
