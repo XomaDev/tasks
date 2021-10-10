@@ -29,9 +29,7 @@ import com.google.appinventor.components.runtime.util.YailList;
 import xyz.kumaraswamy.tasks.node.Node;
 import xyz.kumaraswamy.tasks.node.NodeConstructor;
 import xyz.kumaraswamy.tasks.node.ValueNode;
-import xyz.kumaraswamy.tasks.template.Load;
 
-import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
@@ -49,7 +47,6 @@ public class ActivityService extends JobService {
     public static final String JOB = "job";
 
     private final String ERROR_FUNCTION_EXISTS = "%s is already an used key!";
-    private final String EXTRA_FUNCTION_PREFIX = "$";
 
     private boolean stopped = false;
     private boolean foreground = false;
@@ -163,11 +160,13 @@ public class ActivityService extends JobService {
             NotificationChannel channel = new NotificationChannel(CHANNEL_ID, "Task",
                     NotificationManager.IMPORTANCE_DEFAULT);
 
-            ((NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE)).createNotificationChannel(channel);
+            ((NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE))
+                    .createNotificationChannel(channel);
             final String icon = initForegroundDetails[3];
 
             final int iconInt = (icon.isEmpty() || icon.equalsIgnoreCase("DEFAULT")) ?
-                    android.R.drawable.ic_menu_info_details : Integer.parseInt(icon.replaceAll(" ", ""));
+                    android.R.drawable.ic_menu_info_details :
+                    Integer.parseInt(icon.replaceAll(" ", ""));
 
             Notification notification =
                     new Notification.Builder(this, "BackgroundService")
@@ -195,28 +194,6 @@ public class ActivityService extends JobService {
             Object[] taskValues = ((YailList) pd.get(taskId + "")).toArray();
             Log.d(TAG, "Task values: " + Arrays.toString(taskValues));
 
-//            if (taskType == TASK_CREATE_FUNCTION) {
-//                function(taskValues);
-//            } else if (taskType == TASK_CALL_FUNCTION) {
-//                handleFunction(taskValues, null);
-//            } else if (taskType == TASK_REGISTER_EVENT) {
-//                putEventName(taskValues);
-//            } else if (taskType == TASK_EXTRA_FUNCTION) {
-//                extraFunction(taskValues);
-//            } else if (taskType == TASK_CREATE_VARIABLE) {
-//                putToVariable(taskValues);
-//            } else if (taskType == TASK_CALL_FUNCTION_WITH_ARGS) {
-//                callWithArgs(taskValues);
-//            } else if (taskType == TASK_WORK_WORK_FUNCTION) {
-//                workFunction(taskValues);
-//            } else if (taskType == TASK_CALL_WORK_FUNCTION) {
-//                callWorkFunction(taskValues);
-//            } else if (taskType == TASK_EXECUTE_TEMPLATE) {
-//                executeTemplate(taskValues);
-//            } else {
-//                throw new Exception("Invalid task " + message);
-//            }
-
             switch (taskType) {
                 case TASK_CREATE_FUNCTION:
                     function(taskValues);
@@ -242,26 +219,10 @@ public class ActivityService extends JobService {
                 case TASK_CALL_WORK_FUNCTION:
                     callWorkFunction(taskValues);
                     break;
-                case TASK_EXECUTE_TEMPLATE:
-                    executeTemplate(taskValues);
-                    break;
                 default:
                     throw new IllegalStateException("Unexpected value: " + taskType);
             }
         }
-    }
-
-    public void createDynamicComponent(String base, String key) {
-        manager.create(base, key);
-    }
-
-    private void executeTemplate(Object[] taskValues) throws IOException, EvalError {
-        final String assetName = (String) taskValues[0];
-        final Object[] parms = ((YailList) taskValues[1]).toArray();
-
-        Log.d(TAG, "executeTemplate: assetName: " + assetName + " " + Arrays.toString(parms));
-
-//        new Load(assetName, this, parms);
     }
 
     private void callWorkFunction(Object[] taskValues) throws Exception {
@@ -313,23 +274,20 @@ public class ActivityService extends JobService {
         // Return the same if value doesn't start with '$'
 
         Log.d(TAG, "processWorkCallNode: for value " + value);
-        if (value.startsWith("$")) {
-            final String sub = value.substring(1);
-            final Object variable = variables.get(sub);
-
-            if (variable != null) {
-                return variable.toString();
-            }
-        } else {
+        if (!value.startsWith("$")) {
             return value;
+        }
+        final String sub = value.substring(1);
+        final Object variable = variables.get(sub);
+
+        if (variable != null) {
+            return variable.toString();
         }
 
         final Object[] objects = workFunctions.get(value.substring(1));
-
         if (objects == null) {
             throw new NullPointerException();
         }
-
         if (!valueOf(objects[0]).equals("logic")) {
             throw new Exception("Unexpected a logic type work function.");
         }
@@ -389,20 +347,21 @@ public class ActivityService extends JobService {
             Object[] invokeValues = (Object[]) value;
             Log.d(TAG, "handleEvent: Invoke values " + Arrays.toString(invokeValues));
 
-            final String eventName1 = invokeValues[0].toString();
-            Log.d(TAG, "handleEvent: Comparing event name with " + eventName1);
+            final String compareName = invokeValues[0].toString();
+            Log.d(TAG, "handleEvent: Comparing event name with " + compareName);
 
-            if (eventName1.equals(eventName)) {
-                final String functionId = invokeValues[1].toString();
-
-                if (functionId.startsWith(EXTRA_FUNCTION_PREFIX)) {
-                    processExtraFunction(functionId.substring(1), parms);
-                } else {
-                    handleFunction(new Object[]{functionId}, null);
-                }
+            if (!compareName.equals(eventName)) {
+                Log.d(TAG, "handleEvent: Event dismissed of name " + eventName);
                 return;
             }
-            Log.d(TAG, "handleEvent: Event dismissed of name " + eventName);
+            final String functionId = invokeValues[1].toString();
+
+            if (functionId.startsWith("$")) {
+                processExtraFunction(functionId.substring(1), parms);
+            } else {
+                handleFunction(new Object[] {
+                        functionId}, parms);
+            }
         }
     }
 
@@ -542,7 +501,7 @@ public class ActivityService extends JobService {
         };
         final String functionName = taskValues[3].toString();
 
-        if (functionName.startsWith(EXTRA_FUNCTION_PREFIX)) {
+        if (functionName.startsWith("$")) {
             throw new Exception("Function name should not start from a dollar symbol.");
         }
 
@@ -559,7 +518,7 @@ public class ActivityService extends JobService {
     private Object handleFunction(Object[] values, Object[] extras) {
         final String functionKey = values[0].toString();
 
-        if (functionKey.startsWith(EXTRA_FUNCTION_PREFIX)) {
+        if (functionKey.startsWith("$")) {
             processExtraFunction(functionKey.substring(1), extras);
             return null;
         }
@@ -705,9 +664,11 @@ public class ActivityService extends JobService {
     // EXTENSION - AI2
 
     class MethodHandler {
+        private static final String TAG = "MethodHandler";
+
         public Object invokeComponent(final Component component, final String methodName,
                                       Object[] params, Object[] eventParms) {
-
+            Log.d(TAG, "invokeComponent: event parms(" + Arrays.toString(eventParms) + ")");
             Method method = findMethod(component.getClass().getMethods(),
                     methodName, params.length);
 

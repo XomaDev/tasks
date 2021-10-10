@@ -23,7 +23,6 @@ import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.os.PersistableBundle;
-import android.util.Log;
 import android.view.Window;
 import android.view.WindowManager;
 import org.json.JSONException;
@@ -61,7 +60,6 @@ public class Tasks extends AndroidNonvisibleComponent {
     static final int TASK_CALL_FUNCTION_WITH_ARGS = 5;
     static final int TASK_WORK_WORK_FUNCTION = 6;
     static final int TASK_CALL_WORK_FUNCTION = 7;
-    static final int TASK_EXECUTE_TEMPLATE = 8;
 
     private int processTaskId = 0;
 
@@ -91,6 +89,8 @@ public class Tasks extends AndroidNonvisibleComponent {
             "Tasks", "Foreground service", "Task is running!", ""
     };
 
+    private static final LogUtil log = new LogUtil("Tasks");
+
     public Tasks(ComponentContainer container) {
         super(container.$form());
 
@@ -110,7 +110,7 @@ public class Tasks extends AndroidNonvisibleComponent {
     public static class AlarmReceiver extends BroadcastReceiver {
         @Override
         public void onReceive(Context context, Intent intent) {
-            Log.d(TAG, "onReceive: Received intent!");
+            log.log("onReceive", "received intent");
             initializeWork(
                     intent.getIntExtra(JOB, 0), 0, context, getScheduler(context),
                     intent.getIntExtra(EXTRA_NETWORK, JobInfo.NETWORK_TYPE_NONE),
@@ -186,7 +186,6 @@ public class Tasks extends AndroidNonvisibleComponent {
             }
             throw new YailRuntimeError("Invalid value provided", TAG);
         }
-        Log.d(TAG, "TimeOut: int num time" + timeout);
     }
 
     @SimpleProperty
@@ -227,38 +226,36 @@ public class Tasks extends AndroidNonvisibleComponent {
             throw new YailRuntimeError("Latency should be above or equal to 0.", TAG);
         }
 
-        storeToDataBase(id, network);
-        if (exact) {
-            PendingIntent pd = getReceiverIntent(id, network, foreground, repeated);
-
-            Log.d(TAG, "Start: Request for exact start!");
-            alarmManager.setAlarmClock(new AlarmManager.AlarmClockInfo(
-                    System.currentTimeMillis() + latency, pd), pd);
-            return true;
-        }
-
-        boolean success = initializeWork(id, latency, activity, jobScheduler, network, foreground, this.foreground);
-
-        if (success) {
+        storeToDB(id, network);
+        if (!exact) {
+            if (!initializeWork(id, latency, activity, jobScheduler,
+                    network, foreground, this.foreground)) {
+                return false;
+            }
             processTaskId = 0;
             pendingTasks = new YailDictionary();
             tasksProcessList = new ArrayList<>();
             components = new YailDictionary();
+        } else {
+            PendingIntent pd = getReceiverIntent(id, network, foreground, repeated);
+            log.log("request to use alarm manager");
+            alarmManager.setAlarmClock(new AlarmManager.AlarmClockInfo(
+                    System.currentTimeMillis() + latency, pd), pd);
         }
-        return success;
+        return true;
+
     }
 
-    private void storeToDataBase(int id, int network) {
+    private void storeToDB(int id, int network) {
+        log.log("storeToDB", tasksProcessList, pendingTasks);
         tinyDB.Namespace(TAG + id);
-        Log.d(TAG, "storeToDataBase: " + tasksProcessList);
-        Log.d(TAG, "storeToDataBase: " + pendingTasks);
 
-        final String[] tags = new String[] {
+        final String[] tags = {
                 JOB, PENDING_TASKS, TASK_PROCESS_LIST,
                 EXTRA_NETWORK, REPEATED_EXTRA,
                 REPEATED_TYPE_EXTRA, TERMINATE_EXTRA
         };
-        final Object[] val = new Object[] {
+        final Object[] val = {
                 components, pendingTasks,
                 YailList.makeList(tasksProcessList),
                 network, repeated, repeatedMode.equalsIgnoreCase("DEFAULT"),
@@ -288,8 +285,8 @@ public class Tasks extends AndroidNonvisibleComponent {
 
         int resultCode = jobScheduler.schedule(builder.build());
         boolean success = (resultCode == JobScheduler.RESULT_SUCCESS);
-
-        Log.d(TAG, "Start: result " + success);
+        log.log("initializeJob",
+                "result " + success);
         return success;
     }
 
