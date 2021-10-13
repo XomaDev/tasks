@@ -31,6 +31,9 @@ import java.util.Set;
 
 public class ComponentManager {
 
+    // the log tag of the class
+    private static final String LOG_TAG = "ComponentManager";
+
     /**
      * Gets the source string of the component object.
      * It can be a Component, full package name or a short name
@@ -98,8 +101,8 @@ public class ComponentManager {
         void eventRaised(Component component, String eventName, Object[] parms);
     }
 
-    // the log tag of the class
-    private static final String LOG_TAG = "ComponentManager";
+    // the logger
+    private static final LogUtil log = new LogUtil(LOG_TAG);
 
     // both the callbacks initialized in the
     // constructor
@@ -120,8 +123,6 @@ public class ComponentManager {
     private final AActivity activity;
     private final FForm form;
 
-    private static final String TAG = "ComponentManager";
-
     public ComponentManager(final Context context, final HashMap<String, String> components,
                             ComponentsBuiltListener componentsCreatedListener,
                             EventRaisedListener eventRaisedListener) {
@@ -136,9 +137,11 @@ public class ComponentManager {
 
         final String packageName = activity.getPackageName();
 
+        // the field names that should be changed
         final String[] fieldNames = {
                 "mWindow", "mComponent", "mWindowManager"
         };
+        // the values for them
         final Object[] fieldNewValues = {
                 new Dialog(context).getWindow(),
                 new ComponentName(packageName, packageName + ".Screen1"),
@@ -146,10 +149,11 @@ public class ComponentManager {
         };
         for (int i = 0; i < fieldNames.length; i++) {
             try {
+                // try to set the var
                 modifyDeclaredVar(fieldNames[i], fieldNewValues[i]);
             } catch (IllegalAccessException e) {
                 e.printStackTrace();
-                Log.w(TAG, "ComponentManager: Unable to declare a field!");
+                log.warn("Unable to modify a field");
             }
         }
 
@@ -173,6 +177,8 @@ public class ComponentManager {
             throw new NullPointerException("Field cannot be null!");
         field.setAccessible(true);
 
+        // set them to the activity
+        // and the form
         field.set(activity, value);
         field.set(form, value);
     }
@@ -191,6 +197,7 @@ public class ComponentManager {
                     getDeclaredField(name);
         } catch (NoSuchFieldException e) {
             // this should not happen!
+            // the field name doesn't exist
             e.printStackTrace();
             return null;
         }
@@ -283,7 +290,7 @@ public class ComponentManager {
             componentsBuilt.put(key, component);
             componentsString.put(component, key);
 
-            Log.d(TAG, "createFromSource: created component " + component);
+            log.log("create", "created component " + component);
             if (isLastKey) {
                 // raise the interfaces, so that the service
                 // can continue its work on.

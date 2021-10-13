@@ -22,8 +22,7 @@ public class Load {
 
     private final Tasks tasks;
 
-    // save a static instance
-    private static final Common common = new Common();
+    private final Common common = new Common(null);
 
     // the logger that logs messages
     private static final LogUtil log = new LogUtil("Load");

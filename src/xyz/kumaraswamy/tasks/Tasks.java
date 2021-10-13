@@ -23,8 +23,6 @@ import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.os.PersistableBundle;
-import android.view.Window;
-import android.view.WindowManager;
 import org.json.JSONException;
 import xyz.kumaraswamy.tasks.node.Node;
 import xyz.kumaraswamy.tasks.node.NodeEncoder;
@@ -39,6 +37,7 @@ import java.util.List;
 import static android.content.Context.ALARM_SERVICE;
 import static android.content.Context.JOB_SCHEDULER_SERVICE;
 import static android.text.TextUtils.isDigitsOnly;
+import static android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON;
 import static xyz.kumaraswamy.tasks.ActivityService.JOB;
 import static xyz.kumaraswamy.tasks.ComponentManager.getSourceString;
 
@@ -100,11 +99,7 @@ public class Tasks extends AndroidNonvisibleComponent {
         jobScheduler = getScheduler(activity);
         alarmManager = (AlarmManager) activity.getSystemService(ALARM_SERVICE);
 
-        Window window = activity.getWindow();
-
-        if (window != null) {
-            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-        }
+        activity.getWindow().addFlags(FLAG_KEEP_SCREEN_ON);
     }
 
     public static class AlarmReceiver extends BroadcastReceiver {
@@ -243,7 +238,6 @@ public class Tasks extends AndroidNonvisibleComponent {
                     System.currentTimeMillis() + latency, pd), pd);
         }
         return true;
-
     }
 
     private void storeToDB(int id, int network) {

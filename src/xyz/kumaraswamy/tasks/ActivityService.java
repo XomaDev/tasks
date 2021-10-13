@@ -1,10 +1,8 @@
 package xyz.kumaraswamy.tasks;
 
-import android.app.AlarmManager;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
-import android.app.PendingIntent;
 import android.app.job.JobParameters;
 import android.app.job.JobService;
 import android.content.Context;
@@ -12,20 +10,17 @@ import android.content.Intent;
 import android.net.Uri;
 import android.os.Build;
 import android.os.PersistableBundle;
-import android.os.PowerManager;
 import android.util.Log;
-
 import bsh.EvalError;
 import bsh.Interpreter;
-import org.jetbrains.annotations.NotNull;
-import org.json.JSONException;
-import xyz.kumaraswamy.tasks.alarms.Terminator;
-
 import com.google.appinventor.components.runtime.Component;
 import com.google.appinventor.components.runtime.errors.YailRuntimeError;
 import com.google.appinventor.components.runtime.util.JsonUtil;
 import com.google.appinventor.components.runtime.util.YailDictionary;
 import com.google.appinventor.components.runtime.util.YailList;
+import org.json.JSONException;
+import xyz.kumaraswamy.tasks.alarms.Initializer;
+import xyz.kumaraswamy.tasks.alarms.Terminator;
 import xyz.kumaraswamy.tasks.node.Node;
 import xyz.kumaraswamy.tasks.node.NodeConstructor;
 import xyz.kumaraswamy.tasks.node.ValueNode;
@@ -37,18 +32,17 @@ import java.util.Arrays;
 import java.util.HashMap;
 
 import static android.app.job.JobInfo.NETWORK_TYPE_NONE;
-
 import static java.lang.String.valueOf;
-import static xyz.kumaraswamy.tasks.Tasks.*;
+import static xyz.kumaraswamy.tasks.Common.treatNumsGetString;
+import static xyz.kumaraswamy.tasks.Tasks.EXTRA_NETWORK;
+import static xyz.kumaraswamy.tasks.Tasks.prepareIntent;
 
 public class ActivityService extends JobService {
 
     private static final String TAG = "ActivityService";
     public static final String JOB = "job";
 
-    private final String ERROR_FUNCTION_EXISTS = "%s is already an used key!";
-
-    private boolean stopped = false;
+    private boolean isJobStopped = false;
     private boolean foreground = false;
     private boolean repeated = false;
     private boolean defaultRepeatedMode;
@@ -70,7 +64,7 @@ public class ActivityService extends JobService {
 
     private MethodHandler methodHandler;
 
-    private final Common common = new Common();
+    private final Common common = new Common(this);
 
     @Override
     public boolean onStartJob(JobParameters parms) {
@@ -85,31 +79,27 @@ public class ActivityService extends JobService {
         jobParms = parms;
         JOB_ID = extras.getInt(JOB);
 
-        int maxRunInt = (int) getValue(TERMINATE_EXTRA, -1);
+        int maxRunInt = (int) getValue(Tasks.TERMINATE_EXTRA, -1);
         if (maxRunInt != -1) {
-            initializeTerminator(maxRunInt);
+            createTerminator(maxRunInt);
         }
         processFunctions(extras);
         methodHandler = new MethodHandler();
     }
 
-    private void initializeTerminator(int timeout) {
-        Intent intent = new Intent(this, Terminator.class);
-        intent.putExtra(JOB, JOB_ID);
-        PendingIntent pd = PendingIntent.getBroadcast(this, JOB_ID, intent,
-                PendingIntent.FLAG_UPDATE_CURRENT);
-
-        AlarmManager alarmManager = (AlarmManager) getSystemService(ALARM_SERVICE);
-
-        alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP,
-                System.currentTimeMillis() + timeout, pd);
+    private void createTerminator(int timeout) {
+        // a terminator that will stop
+        // this service when the timeout is
+        // reached
+        new Initializer(this, common)
+                .create(Terminator.class)
+                .setJobId(JOB_ID)
+                .startExactAndAllowWhileIdle(timeout);
     }
 
     @SuppressWarnings({"unchecked", "SuspiciousToArrayCall"})
     private void processFunctions(final PersistableBundle extras) {
-        PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
-        PowerManager.WakeLock wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, TAG + "WakeLock");
-        wakeLock.acquire();
+        common.acquireWakeLock();
 
         ComponentManager.ComponentsBuiltListener componentsCreated = () -> {
             Log.d(TAG, "componentsBuilt: Components build!");
@@ -126,20 +116,20 @@ public class ActivityService extends JobService {
         };
 
         ComponentManager.EventRaisedListener eventRaisedListener = (component, eventName, parameters) -> {
-            if (!stopped) {
-                Log.d(TAG, "eventRaisedListener: Event raised of name " + eventName);
-                Log.d(TAG, "processFunctions: " + Arrays.toString(parameters));
-                handleEvent(component, eventName, parameters);
+            if (isJobStopped) {
+                return;
             }
+            Log.d(TAG, "eventRaisedListener: Event raised of name " + eventName);
+            Log.d(TAG, "processFunctions: " + Arrays.toString(parameters));
+            handleEvent(component, eventName, parameters);
         };
-
         Object components = getValue(JOB, new HashMap<String, String>());
         manager = new ComponentManager(this, (HashMap<String, String>) components, componentsCreated,
                 eventRaisedListener);
 
-        foreground = extras.getBoolean(FOREGROUND_MODE);
-        repeated = (boolean) getValue(REPEATED_EXTRA, false);
-        defaultRepeatedMode = (boolean) getValue(REPEATED_TYPE_EXTRA, false);
+        foreground = extras.getBoolean(Tasks.FOREGROUND_MODE);
+        repeated = (boolean) getValue(Tasks.REPEATED_EXTRA, false);
+        defaultRepeatedMode = (boolean) getValue(Tasks.REPEATED_TYPE_EXTRA, false);
 
         Log.d(TAG, "processFunctions: Foreground " + foreground);
         Log.d(TAG, "processFunctions: Repeated extra " + repeated);
@@ -148,7 +138,7 @@ public class ActivityService extends JobService {
             return;
         }
 
-        initForegroundDetails = extras.getStringArray(FOREGROUND_CONFIG);
+        initForegroundDetails = extras.getStringArray(Tasks.FOREGROUND_CONFIG);
         initialiseForeground();
     }
 
@@ -195,28 +185,28 @@ public class ActivityService extends JobService {
             Log.d(TAG, "Task values: " + Arrays.toString(taskValues));
 
             switch (taskType) {
-                case TASK_CREATE_FUNCTION:
+                case Tasks.TASK_CREATE_FUNCTION:
                     function(taskValues);
                     break;
-                case TASK_CALL_FUNCTION:
+                case Tasks.TASK_CALL_FUNCTION:
                     handleFunction(taskValues, null);
                     break;
-                case TASK_REGISTER_EVENT:
+                case Tasks.TASK_REGISTER_EVENT:
                     putEventName(taskValues);
                     break;
-                case TASK_EXTRA_FUNCTION:
+                case Tasks.TASK_EXTRA_FUNCTION:
                     extraFunction(taskValues);
                     break;
-                case TASK_CREATE_VARIABLE:
+                case Tasks.TASK_CREATE_VARIABLE:
                     putToVariable(taskValues);
                     break;
-                case TASK_CALL_FUNCTION_WITH_ARGS:
+                case Tasks.TASK_CALL_FUNCTION_WITH_ARGS:
                     callWithArgs(taskValues);
                     break;
-                case TASK_WORK_WORK_FUNCTION:
+                case Tasks.TASK_WORK_WORK_FUNCTION:
                     workFunction(taskValues);
                     break;
-                case TASK_CALL_WORK_FUNCTION:
+                case Tasks.TASK_CALL_WORK_FUNCTION:
                     callWorkFunction(taskValues);
                     break;
                 default:
@@ -400,7 +390,7 @@ public class ActivityService extends JobService {
         Object[] parms = (Object[]) objs[2];
 
         if (functionName.equals("function")) {
-            handleFunction(new Object[]{input}, parms);
+            handleFunction(new Object[] {input}, parms);
             return;
         }
         Log.e(TAG, "Invalid extra function type name received! Name: " + functionName);
@@ -492,7 +482,7 @@ public class ActivityService extends JobService {
             extraFunctions.put(id, ((YailList) taskValues[1]).toArray() /* Values */);
             return;
         }
-        throw new Exception(String.format(ERROR_FUNCTION_EXISTS, id));
+        throw new Exception("Function already exists '" +  id + "'");
     }
 
     private void function(Object[] taskValues) throws Exception {
@@ -511,7 +501,7 @@ public class ActivityService extends JobService {
             return;
         }
 
-        throw new Exception(String.format(ERROR_FUNCTION_EXISTS, functionName));
+        throw new Exception("Function already exists '" +  functionName + "'");
     }
 
     @SuppressWarnings("SuspiciousToArrayCall")
@@ -573,9 +563,9 @@ public class ActivityService extends JobService {
         return invoke(extras, key, methodName, funcParms);
     }
 
-    @NotNull
-    public Object invoke(Object[] extras, String key, String methodName, Object[] funcParms) {
-        Log.d(TAG, "invoke: parms for the function " + Arrays.toString(funcParms));
+    public Object invoke(Object[] extras, String key, String methodName, Object[] parms) {
+        Log.d(TAG, "invoke: parms for the function " + Arrays.toString(parms));
+        Log.d(TAG, "invoke: extras for the function: " + Arrays.toString(extras));
 
         final Component component = manager.component(key);
 
@@ -586,7 +576,7 @@ public class ActivityService extends JobService {
         Object invoke = null;
         try {
             invoke = methodHandler.invokeComponent(component,
-                    methodName, funcParms, extras);
+                    methodName, parms, extras);
             Log.d(TAG, "invoke: Invoke result: " + invoke);
             variables.put("invoke", invoke);
         } catch (Exception e) {
@@ -603,9 +593,9 @@ public class ActivityService extends JobService {
                 methodHandler.invokeComponent(component, method,
                         new Object[0], null);
             }
-        } catch (Exception exception) {
+        } catch (Exception e) {
             // Just log the exception
-            Log.e(TAG, "destroyComponent: " + exception.getMessage());
+            Log.e(TAG, "destroyComponent: " + e.getMessage());
         }
     }
 
@@ -614,13 +604,10 @@ public class ActivityService extends JobService {
                 || Boolean.parseBoolean(array[0].toString()));
     }
 
-    public String replaceEventNames(String string) {
+    public String replaceKeys(String string) {
         for (String key : variables.keySet()) {
-            final String replacement = methodHandler.fix_replacement(variables.get(key));
-
-            if (replacement != null) {
-                string = string.replace("{$" + key + "}", replacement);
-            }
+            string = string.replace("{$" + key + "}",
+                    treatNumsGetString(variables.get(key)));
         }
         return string;
     }
@@ -643,20 +630,30 @@ public class ActivityService extends JobService {
     @Override
     public boolean onStopJob(JobParameters parms) {
         Log.d(TAG, "onStopJob: Job cancelled");
-        stopped = true;
+
+        // Job is now stopped, so now if
+        // a component raises a component
+        // raises an event even after calling
+        // destroyComponent(String), then we will just ignore that
+        isJobStopped = true;
 
         for (String key : manager.usedComponents()) {
             destroyComponent(key);
         }
 
-        if (repeated) {
-            jobFinished(parms, defaultRepeatedMode);
-            if (defaultRepeatedMode) {
-                return true;
-            }
-            sendBroadcast(prepareIntent(this, JOB_ID, (int) getValue(EXTRA_NETWORK,
-                            NETWORK_TYPE_NONE), foreground, initForegroundDetails, repeated));
+        if (!repeated) {
+            return false;
         }
+        // this is important!
+        jobFinished(parms, defaultRepeatedMode);
+
+        if (defaultRepeatedMode) {
+            return true;
+        }
+        // send a broadcast to
+        // restart this service again
+        sendBroadcast(prepareIntent(this, JOB_ID, (int) getValue(EXTRA_NETWORK,
+                        NETWORK_TYPE_NONE), foreground, initForegroundDetails, repeated));
         return false;
     }
 
@@ -664,6 +661,7 @@ public class ActivityService extends JobService {
     // EXTENSION - AI2
 
     class MethodHandler {
+
         private static final String TAG = "MethodHandler";
 
         public Object invokeComponent(final Component component, final String methodName,
@@ -672,37 +670,29 @@ public class ActivityService extends JobService {
             Method method = findMethod(component.getClass().getMethods(),
                     methodName, params.length);
 
-            if (method == null) {
-                Log.e(TAG, "invokeComponent: Method not found for name \"" + methodName + "\"!");
-                return null;
-            }
-
             for (int i = 0; i < params.length; i++) {
                 final Object objectParm = params[i];
 
-                if (objectParm instanceof String) {
-                    String string = replaceEventNames(
-                            valueOf(objectParm));
-
-                    if (eventParms == null) {
-                        params[i] = string;
-                        continue;
-                    }
-
-                    for (int j = 0; j < eventParms.length; j++) {
-                        final String replacement = fix_replacement(eventParms[j]);
-
-                        if (replacement != null) {
-                            string = string.replace("{$" + j + "}", replacement);
-                        }
-                    }
-                    params[i] = string;
+                if (!(objectParm instanceof String)) {
+                    continue;
                 }
+                String string = replaceKeys(
+                        valueOf(objectParm));
+                if (eventParms == null) {
+                    params[i] = string;
+                    continue;
+                }
+                for (int j = 0; j < eventParms.length; j++) {
+                    string = string.replace("{$" + j + "}",
+                            treatNumsGetString(eventParms[j]));
+                }
+                Log.d(TAG, "invokeComponent: processed parm '" + string + "'");
+                params[i] = string;
             }
 
             final Object[] result = new Object[1];
 
-            ActivityService.this.manager.postRunnable(() -> {
+            manager.postRunnable(() -> {
                 try {
                     result[0] = method.invoke(component,
                             castParms(method.getParameterTypes(), params));
@@ -714,53 +704,43 @@ public class ActivityService extends JobService {
         }
 
         private Object[] castParms(Class<?>[] parmsTypes, Object[] params) {
-            Object[] modifiedParms = new Object[parmsTypes.length];
-
             for (int i = 0; i < parmsTypes.length; i++) {
-                final String value = valueOf(params[i]);
+                final Object object = params[i];
+                final String value = valueOf(object);
 
                 switch (parmsTypes[i].getName()) {
                     case "int":
-                        modifiedParms[i] = Integer.parseInt(value);
+                        params[i] = Integer.parseInt(value);
                         break;
                     case "float":
-                        modifiedParms[i] = Float.parseFloat(value);
+                        params[i] = Float.parseFloat(value);
                         break;
                     case "double":
-                        modifiedParms[i] = Double.parseDouble(value);
+                        params[i] = Double.parseDouble(value);
                         break;
                     case "java.lang.String":
-                        modifiedParms[i] = String.valueOf(params[i]);
+                        params[i] = value;
                         break;
                     case "boolean":
-                        modifiedParms[i] = Boolean.parseBoolean(value);
+                        params[i] = Boolean.parseBoolean(value);
                         break;
                     case "byte":
-                        modifiedParms[i] = Byte.parseByte(value);
+                        params[i] = Byte.parseByte(value);
                     default:
-                        modifiedParms[i] = params[i];
+                        params[i] = object;
                 }
             }
-            return modifiedParms;
+            return params;
         }
 
-        private String fix_replacement(Object obj) {
-            return obj instanceof String
-                    ? obj.toString()
-                    : obj instanceof Number
-                    ? valueOf(((Number) obj).intValue())
-                    : null;
-
-        }
-
-        private Method findMethod(Method[] methods, String name, int parameterCount) {
+        private Method findMethod(Method[] methods, String name, int parmsCount) {
             name = name.replaceAll("[^a-zA-Z0-9]", "");
             for (Method method : methods) {
                 if (method.getName().equals(name) &&
-                        method.getParameterTypes().length == parameterCount)
+                        method.getParameterTypes().length == parmsCount)
                     return method;
             }
-            return null;
+            throw new IllegalArgumentException("Cannot find method named '" + name + "'!");
         }
 
         public Object emptyIfNull(Object o) {
