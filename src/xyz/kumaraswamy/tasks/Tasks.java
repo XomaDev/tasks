@@ -425,27 +425,27 @@ public class Tasks extends AndroidNonvisibleComponent {
     }
     
     @SimpleProperty()
-    public int ANY(){
+    public int NetworkANY(){
         return JobInfo.NETWORK_TYPE_ANY;
     }
     
     @SimpleProperty()
-    public int CELLULAR(){
+    public int NetworkCELLULAR(){
         return JobInfo.NETWORK_TYPE_CELLULAR;
     }
     
     @SimpleProperty()
-    public int UNMETERED(){
+    public int NetworkUNMETERED(){
         return JobInfo.NETWORK_TYPE_UNMETERED;
     }
     
     @SimpleProperty()
-    public int ROAMING(){
+    public int NetworkROAMING(){
         return JobInfo.NETWORK_TYPE_NOT_ROAMING;
     }
     
     @SimpleProperty()
-    public int NONE(){
+    public int NetworkNONE(){
         return JobInfo.NETWORK_TYPE_NONE;
     }
 
