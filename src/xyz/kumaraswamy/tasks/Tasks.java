@@ -193,29 +193,10 @@ public class Tasks extends AndroidNonvisibleComponent {
                     "for your service. Specify a non-negative delay in ms for the latency. " +
                     "requiredNetwork allows you set the condition the service runs, possible " +
                     "values are 'ANY', 'CELLULAR', 'UN_METERED', 'NOT_ROAMING' and 'NONE'.")
-    public Object Start(final int id, long latency, String requiredNetwork, boolean foreground) {
+    public Object Start(final int id, long latency, int requiredNetwork, boolean foreground) {
         int network;
-
-        switch (requiredNetwork =
-                requiredNetwork.toUpperCase().trim()) {
-            case "ANY":
-                network = JobInfo.NETWORK_TYPE_ANY;
-                break;
-            case "CELLULAR":
-                network = JobInfo.NETWORK_TYPE_CELLULAR;
-                break;
-            case "UN_METERED":
-                network = JobInfo.NETWORK_TYPE_UNMETERED;
-                break;
-            case "NOT_ROAMING":
-                network = JobInfo.NETWORK_TYPE_NOT_ROAMING;
-                break;
-            case "NONE":
-                network = JobInfo.NETWORK_TYPE_NONE;
-                break;
-            default:
-                throw new IllegalStateException("Unexpected value: " + requiredNetwork);
-        }
+        
+        network = requiredNetwork;
 
         if (latency < 0) {
             throw new YailRuntimeError("Latency should be above or equal to 0.", TAG);
@@ -441,6 +422,31 @@ public class Tasks extends AndroidNonvisibleComponent {
     @SimpleFunction(description = "Calls the work function by its name")
     public void CallWorkFunction(final String id) {
         put(TASK_CALL_WORK_FUNCTION, id);
+    }
+    
+    @SimpleProperty()
+    public int ANY(){
+        return JobInfo.NETWORK_TYPE_ANY;
+    }
+    
+    @SimpleProperty()
+    public int CELLULAR(){
+        return JobInfo.NETWORK_TYPE_CELLULAR;
+    }
+    
+    @SimpleProperty()
+    public int UNMETERED(){
+        return JobInfo.NETWORK_TYPE_UNMETERED;
+    }
+    
+    @SimpleProperty()
+    public int ROAMING(){
+        return JobInfo.NETWORK_TYPE_NOT_ROAMING;
+    }
+    
+    @SimpleProperty()
+    public int NONE(){
+        return JobInfo.NETWORK_TYPE_NONE;
     }
 
     private ArrayList<Integer> pendingIds() {
