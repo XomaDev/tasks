@@ -95,6 +95,7 @@ public class ActivityService extends JobService {
         // a terminator that will stop
         // this service when the timeout is
         // reached
+
         new Initializer(this, common)
                 .create(Terminator.class)
                 .setJobId(JOB_ID)
