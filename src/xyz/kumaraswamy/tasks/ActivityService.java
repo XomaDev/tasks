@@ -92,6 +92,7 @@ public class ActivityService extends JobService {
     }
 
     private void createTerminator(int timeout) {
+
         // a terminator that will stop
         // this service when the timeout is
         // reached
