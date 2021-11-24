@@ -11,8 +11,6 @@ import bsh.EvalError;
 import bsh.Interpreter;
 import com.google.appinventor.components.runtime.errors.YailRuntimeError;
 
-import static java.lang.String.valueOf;
-
 public class Common {
 
     // the context to handle things
@@ -61,24 +59,6 @@ public class Common {
             throw new IllegalArgumentException();
         return context.getSystemService(name);
     }
-
-    /**
-     * Gets the string representation of an object
-     * Anything that is in form of an AppInventor Int
-     * which has its superclass as Number will be handled.
-     *
-     * @param object The object to perform action
-     */
-
-    public static String treatNumsGetString(Object object) {
-        if (object instanceof String) {
-            return (String) object;
-        } else if (object instanceof Number) {
-            return valueOf(((Number) object).intValue());
-        }
-        return valueOf(object);
-    }
-
 
     /**
      * The parsing number types

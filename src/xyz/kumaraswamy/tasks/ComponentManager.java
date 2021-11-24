@@ -173,8 +173,10 @@ public class ComponentManager {
         }
         final String lastKey = keys[len - 1];
 
-        for (final String key : keys)
-            createFromSource(components.get(key), key, key.equals(lastKey));
+        for (final String key : keys) {
+            createFromSource(components.get(key), key,
+                    key.equals(lastKey));
+        }
     }
 
     private void modifyDeclaredVar(String name, Object value) throws IllegalAccessException {

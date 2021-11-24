@@ -3,21 +3,21 @@
         xmlns:android="http://schemas.android.com/apk/res/android"
         package="xyz.kumaraswamy.tasks">
 
-  <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
-  <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
-  <uses-permission android:name="android.permission.WAKE_LOCK"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+    <uses-permission android:name="android.permission.WAKE_LOCK"/>
 
-  <application>
-    <service android:name="xyz.kumaraswamy.tasks.ActivityService"
-             android:permission="android.permission.BIND_JOB_SERVICE"
-             android:exported="true"/>
+    <application>
+        <service android:name="xyz.kumaraswamy.tasks.ActivityService"
+                 android:permission="android.permission.BIND_JOB_SERVICE"
+                 android:exported="true"/>
 
-    <receiver android:name="xyz.kumaraswamy.tasks.Tasks$AlarmReceiver"
-              android:exported="true"/>
+        <receiver android:name="xyz.kumaraswamy.tasks.Tasks$AlarmReceiver"
+                  android:exported="true"/>
 
-    <receiver android:name="xyz.kumaraswamy.tasks.alarms.Terminator"
-              android:exported="true"/>
+        <receiver android:name="xyz.kumaraswamy.tasks.alarms.Terminator"
+                  android:exported="true"/>
 
-    <activity android:name="xyz.kumaraswamy.tasks.ComponentManager$AActivity"/>
-  </application>
+        <activity android:name="xyz.kumaraswamy.tasks.ComponentManager$AActivity"/>
+    </application>
 </manifest>

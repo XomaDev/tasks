@@ -4,6 +4,15 @@
 -keep public class xyz.kumaraswamy.tasks.Tasks {
     public *;
  }
+
+ -keep public class xyz.kumaraswamy.tasks.ActivityService {
+     public *;
+  }
+
+  -keep public class com.google.firebase.messaging.FirebaseMessagingService {
+     public *;
+  }
+
 -keeppackagenames gnu.kawa**, gnu.expr**
 
 -optimizationpasses 4
@@ -13,3 +22,5 @@
 -repackageclasses 'xyz/kumaraswamy/tasks/repack'
 -flattenpackagehierarchy
 -dontpreverify
+
+-dontwarn bsh.util.*, bsh.servlet.*

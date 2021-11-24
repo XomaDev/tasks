@@ -9,7 +9,6 @@ import android.app.job.JobParameters;
 import android.app.job.JobService;
 import android.content.Intent;
 import android.net.Uri;
-import android.os.Build;
 import android.os.PersistableBundle;
 import android.util.Log;
 import bsh.EvalError;
@@ -22,9 +21,7 @@ import com.google.appinventor.components.runtime.util.YailList;
 import org.json.JSONException;
 import xyz.kumaraswamy.tasks.alarms.Initializer;
 import xyz.kumaraswamy.tasks.alarms.Terminator;
-import xyz.kumaraswamy.tasks.node.Node;
-import xyz.kumaraswamy.tasks.node.NodeConstructor;
-import xyz.kumaraswamy.tasks.node.ValueNode;
+import xyz.kumaraswamy.tasks.jet.Jet;
 import xyz.kumaraswamy.tasks.tools.Common;
 import xyz.kumaraswamy.tasks.tools.Notification;
 
@@ -36,7 +33,6 @@ import java.util.HashMap;
 
 import static android.app.job.JobInfo.NETWORK_TYPE_NONE;
 import static java.lang.String.valueOf;
-import static xyz.kumaraswamy.tasks.tools.Common.treatNumsGetString;
 import static xyz.kumaraswamy.tasks.Tasks.EXTRA_NETWORK;
 import static xyz.kumaraswamy.tasks.Tasks.prepareIntent;
 
@@ -61,13 +57,12 @@ public class ActivityService extends JobService {
     private final HashMap<String, ArrayList<Object>> events = new HashMap<>();
     private final HashMap<String, Object[]> extraFunctions = new HashMap<>();
 
-    private final HashMap<String, Object[]> workFunctions = new HashMap<>();
-
-    static final HashMap<String, Object> variables = new HashMap<>();
+    final HashMap<String, Object> variables = new HashMap<>();
 
     private MethodHandler methodHandler;
 
     private final Common common = new Common(this);
+    private Jet jet;
 
     @Override
     public boolean onStartJob(JobParameters parms) {
@@ -89,6 +84,7 @@ public class ActivityService extends JobService {
         }
         processFunctions(extras);
         methodHandler = new MethodHandler();
+        jet = new Jet(manager, variables);
     }
 
     private void createTerminator(int timeout) {
@@ -148,21 +144,17 @@ public class ActivityService extends JobService {
         initialiseForeground();
     }
 
-    private void initialiseForeground()  {
+    private void initialiseForeground() {
         Log.i(TAG, "initializeForeground: " + argsForeground[2]);
 
-        // 1 = title, 2 = content text, 3 = sub text
-        if (Build.VERSION.SDK_INT >= 26) {
-            try {
-                android.app.Notification notification = new Notification(common)
-                        .setSmallIcon(argsForeground[3])
-                        .configure(argsForeground[1],
-                                argsForeground[2], argsForeground[0])
-                        .buildNotification();
-                startForeground(1, notification);
-            } catch (NoSuchFieldException | IllegalAccessException e) {
-                e.printStackTrace();
-            }
+        try {
+            startForeground(1, new Notification(common)
+                    .setSmallIcon(argsForeground[3])
+                    .configure(argsForeground[1],
+                            argsForeground[2], argsForeground[0])
+                    .buildNotification());
+        } catch (NoSuchFieldException | IllegalAccessException e) {
+            e.printStackTrace();
         }
     }
 
@@ -197,122 +189,10 @@ public class ActivityService extends JobService {
                 case Tasks.TASK_CREATE_VARIABLE:
                     putToVariable(taskValues);
                     break;
-                case Tasks.TASK_CALL_FUNCTION_WITH_ARGS:
-                    callWithArgs(taskValues);
-                    break;
-                case Tasks.TASK_WORK_WORK_FUNCTION:
-                    workFunction(taskValues);
-                    break;
-                case Tasks.TASK_CALL_WORK_FUNCTION:
-                    callWorkFunction(taskValues);
-                    break;
                 default:
                     throw new IllegalStateException("Unexpected value: " + taskType);
             }
         }
-    }
-
-    private void callWorkFunction(Object[] taskValues) throws Exception {
-        final String id = valueOf(taskValues[0]);
-        final Object[] values = workFunctions.get(id);
-
-        if (values == null) {
-            throw new Exception("Cannot find work function id '" + id + '\'');
-        }
-        Log.d(TAG, "callWorkFunction: " + Arrays.toString(values));
-
-        final String type = valueOf(values[0]);
-
-        switch (type) {
-            case "call":
-                handleWorkCall((Node) values[1]);
-                break;
-        }
-    }
-
-    private void handleWorkCall(final Node node) throws Exception {
-        Log.d(TAG, "handleWorkCall");
-        final String workName = node.getValue();
-
-        final String right =
-                processWorkCallNode(node, true)
-                , left = processWorkCallNode(node, false);
-
-        Log.d(TAG, "handleWorkCall: left '" + right +
-                "' right" + "'" + left + "'");
-
-        if (!right.equals(left)) {
-            return;
-        }
-        handleFunction(new Object[] {workName}, null);
-    }
-
-    private String processWorkCallNode(final Node node, boolean rightNode) throws Exception {
-        final Node headNode = !rightNode ?
-                node.getLeft() : node.getRight();
-
-        if (!(headNode instanceof ValueNode)) {
-            return checkNode(headNode);
-        }
-
-        // If head node is instance of ValueNode
-        final String value = headNode.getValue();
-
-        // Return the same if value doesn't start with '$'
-
-        Log.d(TAG, "processWorkCallNode: for value " + value);
-        if (!value.startsWith("$")) {
-            return value;
-        }
-        final String sub = value.substring(1);
-        final Object variable = variables.get(sub);
-
-        if (variable != null) {
-            return variable.toString();
-        }
-
-        final Object[] objects = workFunctions.get(value.substring(1));
-        if (objects == null) {
-            throw new NullPointerException();
-        }
-        if (!valueOf(objects[0]).equals("logic")) {
-            throw new Exception("Unexpected a logic type work function.");
-        }
-
-        return checkNode((Node) objects[1]);
-    }
-
-    private String checkNode(final Node node) throws Exception {
-        final String a1 = valueOf(processWorkCallNode(node, true));
-        final String a2 = processWorkCallNode(node, false);
-        Log.d(TAG, "checkNode: a1 " + a1);
-        Log.d(TAG, "checkNode: a2 " + a2);
-        return valueOf(a1.equals(
-                a2));
-    }
-
-    private void workFunction(Object[] taskValues) throws JSONException {
-        final String type = valueOf(taskValues[1]).toLowerCase();
-
-        switch (type) {
-            case "logic":
-            case "work":
-            case "call":
-                break;
-            default:
-                throw new IllegalStateException("Unexpected value: " + type);
-        }
-        final Node node = NodeConstructor
-                .constructNode((String) taskValues[2]);
-        workFunctions.put(valueOf(taskValues[0]), new Object[] {type, node});
-        Log.d(TAG, "workFunction: Put work function type " + type + ", node " + node);
-    }
-
-    private void callWithArgs(Object[] taskValues) {
-        String functionName = taskValues[0].toString();
-
-        handleFunction(new Object[] {functionName},
-                /* Extras */ ((YailList) taskValues[1]).toArray());
     }
 
     public void putToVariable(Object[] taskValues) {
@@ -452,7 +332,7 @@ public class ActivityService extends JobService {
     }
 
     public Object eval(Object[] parms, String eval,
-                        Interpreter interpreter) throws EvalError {
+                       Interpreter interpreter) throws EvalError {
         interpreter.set("me", new Me());
         common.declareObjects(parms, interpreter);
         for (String name : variables.keySet()) {
@@ -602,14 +482,6 @@ public class ActivityService extends JobService {
                 || Boolean.parseBoolean(array[0].toString()));
     }
 
-    public String replaceKeys(String string) {
-        for (String key : variables.keySet()) {
-            string = string.replace("{$" + key + "}",
-                    treatNumsGetString(variables.get(key)));
-        }
-        return string;
-    }
-
     private void putEventName(Object[] values) {
         final String componentId = values[0].toString();
 
@@ -654,7 +526,7 @@ public class ActivityService extends JobService {
         // send a broadcast to
         // restart this service again
         sendBroadcast(prepareIntent(this, JOB_ID, (int) getValue(EXTRA_NETWORK,
-                        NETWORK_TYPE_NONE), foreground, argsForeground, repeated));
+                NETWORK_TYPE_NONE), foreground, argsForeground, repeated));
         return false;
     }
 
@@ -672,80 +544,59 @@ public class ActivityService extends JobService {
                     methodName, params.length);
 
             for (int i = 0; i < params.length; i++) {
-                final Object objectParm = params[i];
-
-                if (!(objectParm instanceof String)) {
-                    continue;
-                }
-                final String temp = valueOf(objectParm);
-
-                if (temp.startsWith("[$") && temp.endsWith("]")) {
-                    String key = temp.substring(2, temp.length() - 1);
-                    Component arg = manager.component(key);
-                    if (arg == null) {
-                        Log.w(TAG, "invokeComponent() invalid key '" + key + "'");
-                    }
-                    params[i] = arg;
-                    continue;
-                }
-
-                String string = replaceKeys(temp);
-                if (extras == null) {
-                    params[i] = string;
-                    continue;
-                }
-                for (int j = 0; j < extras.length; j++) {
-                    string = string.replace("{$" + j + "}",
-                            treatNumsGetString(extras[j]));
-                }
-                Log.d(TAG, "invokeComponent: processed parm '" + string + "'");
-                params[i] = string;
+                params[i] = jet.process(params[i], extras);
             }
 
             final Object[] result = new Object[1];
 
-            manager.postRunnable(() -> {
-                try {
-                    result[0] = method.invoke(component,
-                            castParms(method.getParameterTypes(), params));
-                    Log.d(ActivityService.TAG, "invokeComponent() finish " + result[0]);
-                } catch (IllegalAccessException | InvocationTargetException e) {
-                    e.printStackTrace();
-                }
-            });
-            return result[0];
+//            manager.postRunnable(() -> {
+//                try {
+//                    result[0] = method.invoke(component,
+//                            castParms(method.getParameterTypes(), params));
+//                    Log.d(ActivityService.TAG, "invokeComponent() finish " + result[0]);
+//                } catch (IllegalAccessException | InvocationTargetException e) {
+//                    e.printStackTrace();
+//                }
+//            });
+//            return result[0];
+            try {
+                return method.invoke(component,
+                        castParms(method.getParameterTypes(), params));
+            } catch (IllegalAccessException | InvocationTargetException e) {
+                e.printStackTrace();
+            }
+            return "";
         }
 
-        private Object[] castParms(Class<?>[] parmsTypes, Object[] params) {
+        private Object[] castParms(Class<?>[] parmsTypes, Object[] parms) {
             for (int i = 0; i < parmsTypes.length; i++) {
-                final Object object = params[i];
+                final Object object = parms[i];
                 final String value = valueOf(object);
 
                 switch (parmsTypes[i].getName()) {
                     case "int":
-                        params[i] = Integer.parseInt(value);
+                        parms[i] = Integer.parseInt(value);
                         break;
                     case "float":
-                        params[i] = Float.parseFloat(value);
+                        parms[i] = Float.parseFloat(value);
                         break;
                     case "double":
-                        params[i] = Double.parseDouble(value);
+                        parms[i] = Double.parseDouble(value);
                         break;
                     case "java.lang.String":
-                        params[i] = value;
+                        parms[i] = value;
                         break;
                     case "boolean":
-                        params[i] = Boolean.parseBoolean(value);
+                        parms[i] = Boolean.parseBoolean(value);
                         break;
                     case "byte":
-                        params[i] = Byte.parseByte(value);
+                        parms[i] = Byte.parseByte(value);
                 }
             }
-            return params;
+            return parms;
         }
 
         private Method findMethod(Method[] methods, String name, int parmsCount) {
-            name = name.replaceAll("[^a-zA-Z0-9]", "");
             for (Method method : methods) {
                 if (method.getName().equals(name) &&
                         method.getParameterTypes().length == parmsCount)

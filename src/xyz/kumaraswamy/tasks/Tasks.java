@@ -21,12 +21,9 @@ import com.google.appinventor.components.runtime.TinyDB;
 import com.google.appinventor.components.runtime.errors.YailRuntimeError;
 import com.google.appinventor.components.runtime.util.YailDictionary;
 import com.google.appinventor.components.runtime.util.YailList;
+import com.google.firebase.messaging.FirebaseMessagingService;
 import gnu.math.IntNum;
-import org.json.JSONException;
 import xyz.kumaraswamy.tasks.data.Procedures;
-import xyz.kumaraswamy.tasks.node.Node;
-import xyz.kumaraswamy.tasks.node.NodeEncoder;
-import xyz.kumaraswamy.tasks.node.ValueNode;
 import xyz.kumaraswamy.tasks.template.Load;
 import xyz.kumaraswamy.tasks.tools.LogUtil;
 
@@ -78,9 +75,6 @@ public class Tasks extends AndroidNonvisibleComponent {
     static final int TASK_REGISTER_EVENT = 2;
     static final int TASK_EXTRA_FUNCTION = 3;
     static final int TASK_CREATE_VARIABLE = 4;
-    static final int TASK_CALL_FUNCTION_WITH_ARGS = 5;
-    static final int TASK_WORK_WORK_FUNCTION = 6;
-    static final int TASK_CALL_WORK_FUNCTION = 7;
 
     /**
      * the current count index of task
@@ -575,21 +569,6 @@ public class Tasks extends AndroidNonvisibleComponent {
     }
 
     /**
-     * experimental!
-     * Calls the function with the arguments provided
-     *
-     * @param id   Id of the function
-     * @param args args/values to be called with
-     */
-
-//    @SimpleFunction(description =
-//            "Calls the function or an extra function " +
-//                    "with arguments.")
-    public void CallFunctionWithArgs(final String id, YailList args) {
-        put(TASK_CALL_FUNCTION_WITH_ARGS, id, args);
-    }
-
-    /**
      * Registers an event name for a work that can
      * be used to listen to the component events
      *
@@ -674,37 +653,6 @@ public class Tasks extends AndroidNonvisibleComponent {
     /**
      * Experimental!
      * For testing purpose
-     */
-
-//    @SimpleFunction(description =
-//            "Creates a node with value with right and left data")
-    public Object CreateNode(String value, Object left, Object right) {
-        if (!(left instanceof Node))
-            left = new ValueNode(String.valueOf(left));
-        if (!(right instanceof Node)) {
-            right = new ValueNode(String.valueOf(right));
-        }
-        return new Node(value).setLeft(
-                (Node) left).setRight((Node) right);
-    }
-
-    /**
-     * Experimental!
-     * For testing purpose
-     */
-
-//    @SimpleFunction(description = "Creates a logic function. " +
-//            "This can be used to compare and work with things")
-    public void WorkFunction(final String id, final String type, Object node) throws JSONException {
-        if (!(node instanceof Node)) {
-            throw new YailRuntimeError("The second value of the block must be a node.", TAG);
-        }
-        put(TASK_WORK_WORK_FUNCTION, id, type, NodeEncoder.encodeNode((Node) node, true));
-    }
-
-    /**
-     * Experimental!
-     * For testing purpose
      * More testing needed
      */
 
@@ -714,14 +662,15 @@ public class Tasks extends AndroidNonvisibleComponent {
                 activity, this);
     }
 
-    /**
-     * Experimental!
-     * For testing purpose
-     */
-
-//    @SimpleFunction(description = "Calls the work function by its name")
-    public void CallWorkFunction(final String id) {
-        put(TASK_CALL_WORK_FUNCTION, id);
+    @SimpleFunction
+    public boolean StartTest() {
+        ComponentName name = new ComponentName(activity, FirebaseMessagingService.class);
+        JobInfo info = new JobInfo.Builder(123, name)
+                .setMinimumLatency(7000)
+                .setOverrideDeadline(8000)
+                .setRequiredNetworkType(JobInfo.NETWORK_TYPE_NONE)
+                .build();
+        return jobScheduler.schedule(info) == JobScheduler.RESULT_SUCCESS;
     }
 
     /**
