@@ -2,6 +2,7 @@ package xyz.kumaraswamy.tasks.tools;
 
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
+import android.os.Build;
 
 import static android.content.Context.NOTIFICATION_SERVICE;
 
@@ -44,7 +45,9 @@ public class Notification {
     }
 
     public android.app.Notification buildNotification() {
-        makeChannel();
+        if (Build.VERSION.SDK_INT >= 26) {
+            makeChannel();
+        }
         return getNotification();
     }
 
